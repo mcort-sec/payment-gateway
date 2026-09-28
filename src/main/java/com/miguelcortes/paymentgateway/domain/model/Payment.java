@@ -1,6 +1,7 @@
 package com.miguelcortes.paymentgateway.domain.model;
 
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentException;
+import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentStateException;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -47,6 +48,29 @@ public class Payment {
         this.status = PaymentStatus.PENDING;
         this.idempotencyKey = idempotencyKey;
         this.createdAt = createdAt;
+    }
+
+    public void approve() {
+        ensurePending("approve");
+        this.status = PaymentStatus.APPROVED;
+    }
+
+    public void decline() {
+        ensurePending("decline");
+        this.status = PaymentStatus.DECLINED;
+    }
+
+    public void cancel() {
+        ensurePending("cancel");
+        this.status = PaymentStatus.CANCELLED;
+    }
+
+    private void ensurePending(String action) {
+        if (this.status != PaymentStatus.PENDING) {
+            throw new InvalidPaymentStateException(
+                    "Cannot " + action + " payment with status " + this.status
+            );
+        }
     }
 
     public UUID getId() {

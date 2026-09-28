@@ -1,6 +1,7 @@
 package com.miguelcortes.paymentgateway.domain.model;
 
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentException;
+import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentStateException;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -182,5 +183,82 @@ class PaymentTest {
         );
 
         assertEquals("Creation timestamp cannot be null", exception.getMessage());
+    }
+
+    @Test
+    void shouldTransitionFromPendingToApproved() {
+        Payment payment = createValidPayment();
+
+        payment.approve();
+
+        assertEquals(PaymentStatus.APPROVED, payment.getStatus());
+    }
+
+    @Test
+    void shouldTransitionFromPendingToDeclined() {
+        Payment payment = createValidPayment();
+
+        payment.decline();
+
+        assertEquals(PaymentStatus.DECLINED, payment.getStatus());
+    }
+
+    @Test
+    void shouldTransitionFromPendingToCancelled() {
+        Payment payment = createValidPayment();
+
+        payment.cancel();
+
+        assertEquals(PaymentStatus.CANCELLED, payment.getStatus());
+    }
+
+    @Test
+    void shouldThrowExceptionWhenCancellingApprovedPayment() {
+        Payment payment = createValidPayment();
+        payment.approve();
+
+        InvalidPaymentStateException exception = assertThrows(
+                InvalidPaymentStateException.class,
+                payment::cancel
+        );
+
+        assertEquals("Cannot cancel payment with status APPROVED", exception.getMessage());
+    }
+
+    @Test
+    void shouldThrowExceptionWhenApprovingDeclinedPayment() {
+        Payment payment = createValidPayment();
+        payment.decline();
+
+        InvalidPaymentStateException exception = assertThrows(
+                InvalidPaymentStateException.class,
+                payment::approve
+        );
+
+        assertEquals("Cannot approve payment with status DECLINED", exception.getMessage());
+    }
+
+    @Test
+    void shouldThrowExceptionWhenApprovingCancelledPayment() {
+        Payment payment = createValidPayment();
+        payment.cancel();
+
+        InvalidPaymentStateException exception = assertThrows(
+                InvalidPaymentStateException.class,
+                payment::approve
+        );
+
+        assertEquals("Cannot approve payment with status CANCELLED", exception.getMessage());
+    }
+
+    private Payment createValidPayment() {
+        return new Payment(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                150000L,
+                Currency.COP,
+                "req-12345",
+                Instant.now()
+        );
     }
 }

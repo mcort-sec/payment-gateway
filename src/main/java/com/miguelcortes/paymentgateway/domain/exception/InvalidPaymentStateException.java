@@ -1,0 +1,7 @@
+package com.miguelcortes.paymentgateway.domain.exception;
+
+public class InvalidPaymentStateException extends RuntimeException {
+    public InvalidPaymentStateException(String message) {
+        super(message);
+    }
+}
