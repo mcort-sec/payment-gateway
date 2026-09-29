@@ -1,5 +1,7 @@
 package com.miguelcortes.paymentgateway.application.port.out;
 
+import com.miguelcortes.paymentgateway.application.pagination.PageQuery;
+import com.miguelcortes.paymentgateway.application.pagination.PageResult;
 import com.miguelcortes.paymentgateway.domain.model.Payment;
 
 import java.util.Optional;
@@ -14,4 +16,6 @@ public interface PaymentRepositoryPort {
     Optional<Payment> findByIdAndMerchantId(UUID id, UUID merchantId);
 
     Optional<Payment> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey);
+
+    PageResult<Payment> findByMerchantId(UUID merchantId, PageQuery pageQuery);
 }

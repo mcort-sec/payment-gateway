@@ -3,6 +3,8 @@ package com.miguelcortes.paymentgateway.application.usecase;
 import com.miguelcortes.paymentgateway.application.exception.ProcessorNotFoundException;
 import com.miguelcortes.paymentgateway.application.exception.ProcessorSuspendedException;
 import com.miguelcortes.paymentgateway.application.exception.RefundNotFoundException;
+import com.miguelcortes.paymentgateway.application.pagination.PageQuery;
+import com.miguelcortes.paymentgateway.application.pagination.PageResult;
 import com.miguelcortes.paymentgateway.application.port.out.ProcessorRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.RefundRepositoryPort;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidRefundStateException;
@@ -221,6 +223,11 @@ class DeclineRefundUseCaseTest {
             return storage.values().stream()
                     .filter(r -> r.getMerchantId().equals(merchantId) && r.getIdempotencyKey().equals(idempotencyKey))
                     .findFirst();
+        }
+
+        @Override
+        public PageResult<Refund> findByMerchantId(UUID merchantId, PageQuery pageQuery) {
+            throw new UnsupportedOperationException();
         }
     }
 

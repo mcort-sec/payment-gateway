@@ -6,6 +6,8 @@ import com.miguelcortes.paymentgateway.application.exception.DuplicateRefundIdem
 import com.miguelcortes.paymentgateway.application.exception.IdempotencyConflictException;
 import com.miguelcortes.paymentgateway.application.exception.PaymentNotFoundException;
 import com.miguelcortes.paymentgateway.application.exception.RefundAmountExceedsAvailableException;
+import com.miguelcortes.paymentgateway.application.pagination.PageQuery;
+import com.miguelcortes.paymentgateway.application.pagination.PageResult;
 import com.miguelcortes.paymentgateway.application.port.out.IdGenerator;
 import com.miguelcortes.paymentgateway.application.port.out.PaymentRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.RefundRepositoryPort;
@@ -565,6 +567,11 @@ class CreateRefundUseCaseTest {
                     .filter(p -> p.getMerchantId().equals(merchantId) && p.getIdempotencyKey().equals(idempotencyKey))
                     .findFirst();
         }
+
+        @Override
+        public PageResult<Payment> findByMerchantId(UUID merchantId, PageQuery pageQuery) {
+            throw new UnsupportedOperationException();
+        }
     }
 
     private static class InMemoryRefundRepository implements RefundRepositoryPort {
@@ -594,6 +601,11 @@ class CreateRefundUseCaseTest {
             return storage.values().stream()
                     .filter(r -> r.getMerchantId().equals(merchantId) && r.getIdempotencyKey().equals(idempotencyKey))
                     .findFirst();
+        }
+
+        @Override
+        public PageResult<Refund> findByMerchantId(UUID merchantId, PageQuery pageQuery) {
+            throw new UnsupportedOperationException();
         }
     }
 

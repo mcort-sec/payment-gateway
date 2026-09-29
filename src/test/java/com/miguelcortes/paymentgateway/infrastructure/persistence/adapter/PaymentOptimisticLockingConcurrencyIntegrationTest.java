@@ -1,6 +1,8 @@
 package com.miguelcortes.paymentgateway.infrastructure.persistence.adapter;
 
 import com.miguelcortes.paymentgateway.application.exception.PaymentConcurrentModificationException;
+import com.miguelcortes.paymentgateway.application.pagination.PageQuery;
+import com.miguelcortes.paymentgateway.application.pagination.PageResult;
 import com.miguelcortes.paymentgateway.application.port.out.PaymentRepositoryPort;
 import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CancelPaymentUseCase;
@@ -199,6 +201,11 @@ class PaymentOptimisticLockingConcurrencyIntegrationTest {
         @Override
         public Optional<Payment> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey) {
             return delegate.findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey);
+        }
+
+        @Override
+        public PageResult<Payment> findByMerchantId(UUID merchantId, PageQuery pageQuery) {
+            return delegate.findByMerchantId(merchantId, pageQuery);
         }
     }
 }

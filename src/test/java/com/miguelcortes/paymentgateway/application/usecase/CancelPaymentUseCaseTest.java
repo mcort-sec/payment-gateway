@@ -1,6 +1,8 @@
 package com.miguelcortes.paymentgateway.application.usecase;
 
 import com.miguelcortes.paymentgateway.application.exception.PaymentNotFoundException;
+import com.miguelcortes.paymentgateway.application.pagination.PageQuery;
+import com.miguelcortes.paymentgateway.application.pagination.PageResult;
 import com.miguelcortes.paymentgateway.application.port.out.PaymentRepositoryPort;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentStateException;
 import com.miguelcortes.paymentgateway.domain.model.Currency;
@@ -232,6 +234,11 @@ class CancelPaymentUseCaseTest {
             return storage.values().stream()
                     .filter(p -> p.getMerchantId().equals(merchantId) && p.getIdempotencyKey().equals(idempotencyKey))
                     .findFirst();
+        }
+
+        @Override
+        public PageResult<Payment> findByMerchantId(UUID merchantId, PageQuery pageQuery) {
+            throw new UnsupportedOperationException();
         }
     }
 }

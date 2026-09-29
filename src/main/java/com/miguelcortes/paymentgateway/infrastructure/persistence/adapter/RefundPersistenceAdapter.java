@@ -2,6 +2,8 @@ package com.miguelcortes.paymentgateway.infrastructure.persistence.adapter;
 
 import com.miguelcortes.paymentgateway.application.exception.DuplicateRefundIdempotencyKeyException;
 import com.miguelcortes.paymentgateway.application.exception.RefundConcurrentModificationException;
+import com.miguelcortes.paymentgateway.application.pagination.PageQuery;
+import com.miguelcortes.paymentgateway.application.pagination.PageResult;
 import com.miguelcortes.paymentgateway.application.port.out.RefundRepositoryPort;
 import com.miguelcortes.paymentgateway.domain.model.Refund;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.entity.RefundEntity;
@@ -10,8 +12,13 @@ import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.Spr
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -68,6 +75,31 @@ public class RefundPersistenceAdapter implements RefundRepositoryPort {
     public Optional<Refund> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey) {
         return springDataRepository.findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey)
                 .map(refundMapper::toDomain);
+    }
+
+    @Override
+    public PageResult<Refund> findByMerchantId(UUID merchantId, PageQuery pageQuery) {
+        Pageable pageable = PageRequest.of(
+                pageQuery.page(),
+                pageQuery.size(),
+                Sort.by(
+                        Sort.Order.desc("createdAt"),
+                        Sort.Order.desc("id")
+                )
+        );
+
+        Page<RefundEntity> page = springDataRepository.findByMerchantId(merchantId, pageable);
+        List<Refund> items = page.getContent().stream()
+                .map(refundMapper::toDomain)
+                .toList();
+
+        return new PageResult<>(
+                items,
+                page.getNumber(),
+                page.getSize(),
+                page.getTotalElements(),
+                page.getTotalPages()
+        );
     }
 
     private boolean isIdempotencyConstraintViolation(DataIntegrityViolationException ex) {

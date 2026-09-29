@@ -2,6 +2,8 @@ package com.miguelcortes.paymentgateway.infrastructure.persistence.adapter;
 
 import com.miguelcortes.paymentgateway.application.command.CreatePaymentCommand;
 import com.miguelcortes.paymentgateway.application.exception.IdempotencyConflictException;
+import com.miguelcortes.paymentgateway.application.pagination.PageQuery;
+import com.miguelcortes.paymentgateway.application.pagination.PageResult;
 import com.miguelcortes.paymentgateway.application.port.out.IdGenerator;
 import com.miguelcortes.paymentgateway.application.port.out.PaymentRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.TimeProvider;
@@ -210,6 +212,11 @@ class PaymentIdempotencyConcurrencyIntegrationTest {
         @Override
         public Optional<Payment> findByIdAndMerchantId(UUID id, UUID merchantId) {
             return delegate.findByIdAndMerchantId(id, merchantId);
+        }
+
+        @Override
+        public PageResult<Payment> findByMerchantId(UUID merchantId, PageQuery pageQuery) {
+            return delegate.findByMerchantId(merchantId, pageQuery);
         }
     }
 }

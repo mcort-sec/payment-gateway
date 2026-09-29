@@ -1,5 +1,7 @@
 package com.miguelcortes.paymentgateway.application.port.out;
 
+import com.miguelcortes.paymentgateway.application.pagination.PageQuery;
+import com.miguelcortes.paymentgateway.application.pagination.PageResult;
 import com.miguelcortes.paymentgateway.domain.model.Refund;
 
 import java.util.Optional;
@@ -14,4 +16,6 @@ public interface RefundRepositoryPort {
     Optional<Refund> findByIdAndMerchantId(UUID id, UUID merchantId);
 
     Optional<Refund> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey);
+
+    PageResult<Refund> findByMerchantId(UUID merchantId, PageQuery pageQuery);
 }

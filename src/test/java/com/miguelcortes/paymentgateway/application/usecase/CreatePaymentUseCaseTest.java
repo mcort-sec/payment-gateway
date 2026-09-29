@@ -5,6 +5,8 @@ import com.miguelcortes.paymentgateway.application.exception.DuplicateIdempotenc
 import com.miguelcortes.paymentgateway.application.exception.IdempotencyConflictException;
 import com.miguelcortes.paymentgateway.application.exception.MerchantNotFoundException;
 import com.miguelcortes.paymentgateway.application.exception.MerchantSuspendedException;
+import com.miguelcortes.paymentgateway.application.pagination.PageQuery;
+import com.miguelcortes.paymentgateway.application.pagination.PageResult;
 import com.miguelcortes.paymentgateway.application.port.out.IdGenerator;
 import com.miguelcortes.paymentgateway.application.port.out.MerchantRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.PaymentRepositoryPort;
@@ -434,6 +436,11 @@ class CreatePaymentUseCaseTest {
         @Override
         public Optional<Payment> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey) {
             return Optional.ofNullable(storage.get(key(merchantId, idempotencyKey)));
+        }
+
+        @Override
+        public PageResult<Payment> findByMerchantId(UUID merchantId, PageQuery pageQuery) {
+            throw new UnsupportedOperationException();
         }
 
         private String key(UUID merchantId, String idempotencyKey) {

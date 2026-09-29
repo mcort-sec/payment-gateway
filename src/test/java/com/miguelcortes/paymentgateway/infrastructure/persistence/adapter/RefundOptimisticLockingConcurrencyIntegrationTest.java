@@ -1,6 +1,8 @@
 package com.miguelcortes.paymentgateway.infrastructure.persistence.adapter;
 
 import com.miguelcortes.paymentgateway.application.exception.RefundConcurrentModificationException;
+import com.miguelcortes.paymentgateway.application.pagination.PageQuery;
+import com.miguelcortes.paymentgateway.application.pagination.PageResult;
 import com.miguelcortes.paymentgateway.application.port.out.RefundRepositoryPort;
 import com.miguelcortes.paymentgateway.application.usecase.ApproveRefundUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.DeclineRefundUseCase;
@@ -222,6 +224,11 @@ class RefundOptimisticLockingConcurrencyIntegrationTest {
         @Override
         public Optional<Refund> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey) {
             return delegate.findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey);
+        }
+
+        @Override
+        public PageResult<Refund> findByMerchantId(UUID merchantId, PageQuery pageQuery) {
+            return delegate.findByMerchantId(merchantId, pageQuery);
         }
     }
 }
