@@ -9,10 +9,12 @@ import com.miguelcortes.paymentgateway.application.usecase.GetPaymentUseCase;
 import com.miguelcortes.paymentgateway.domain.model.Payment;
 import com.miguelcortes.paymentgateway.entrypoint.rest.dto.CreatePaymentRequest;
 import com.miguelcortes.paymentgateway.entrypoint.rest.dto.PaymentResponse;
+import com.miguelcortes.paymentgateway.infrastructure.security.MerchantPrincipal;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -53,6 +55,7 @@ public class PaymentController {
 
     @PostMapping
     public ResponseEntity<PaymentResponse> createPayment(
+            @AuthenticationPrincipal MerchantPrincipal principal,
             @RequestHeader("Idempotency-Key")
             @NotBlank(message = "Idempotency-Key header cannot be blank")
             @Size(max = 64, message = "Idempotency-Key must not exceed 64 characters")
@@ -60,7 +63,7 @@ public class PaymentController {
             @Valid @RequestBody CreatePaymentRequest request
     ) {
         CreatePaymentCommand command = new CreatePaymentCommand(
-                request.merchantId(),
+                principal.merchantId(),
                 request.amount(),
                 request.currency(),
                 idempotencyKey
@@ -78,8 +81,11 @@ public class PaymentController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<PaymentResponse> getPayment(@PathVariable UUID id) {
-        Payment payment = getPaymentUseCase.execute(id);
+    public ResponseEntity<PaymentResponse> getPayment(
+            @AuthenticationPrincipal MerchantPrincipal principal,
+            @PathVariable UUID id
+    ) {
+        Payment payment = getPaymentUseCase.execute(id, principal.merchantId());
         return ResponseEntity.ok(PaymentResponse.fromDomain(payment));
     }
 
@@ -96,8 +102,11 @@ public class PaymentController {
     }
 
     @PostMapping("/{id}/cancel")
-    public ResponseEntity<PaymentResponse> cancelPayment(@PathVariable UUID id) {
-        Payment payment = cancelPaymentUseCase.execute(id);
+    public ResponseEntity<PaymentResponse> cancelPayment(
+            @AuthenticationPrincipal MerchantPrincipal principal,
+            @PathVariable UUID id
+    ) {
+        Payment payment = cancelPaymentUseCase.execute(id, principal.merchantId());
         return ResponseEntity.ok(PaymentResponse.fromDomain(payment));
     }
 }

@@ -14,8 +14,14 @@ public class CancelPaymentUseCase {
         this.paymentRepositoryPort = paymentRepositoryPort;
     }
 
-    public Payment execute(UUID id) {
-        Payment payment = paymentRepositoryPort.findById(id)
+    public Payment execute(UUID id, UUID requesterMerchantId) {
+        if (id == null) {
+            throw new IllegalArgumentException("Payment ID must not be null");
+        }
+        if (requesterMerchantId == null) {
+            throw new IllegalArgumentException("Requester merchant ID must not be null");
+        }
+        Payment payment = paymentRepositoryPort.findByIdAndMerchantId(id, requesterMerchantId)
                 .orElseThrow(() -> new PaymentNotFoundException(id));
 
         payment.cancel();

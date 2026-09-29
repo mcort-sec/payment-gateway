@@ -1,11 +1,15 @@
 package com.miguelcortes.paymentgateway.entrypoint.rest;
 
 import com.jayway.jsonpath.JsonPath;
+import com.miguelcortes.paymentgateway.application.command.CreateApiCredentialCommand;
+import com.miguelcortes.paymentgateway.application.dto.GeneratedApiCredential;
+import com.miguelcortes.paymentgateway.application.usecase.CreateApiCredentialUseCase;
 import com.miguelcortes.paymentgateway.domain.model.Currency;
 import com.miguelcortes.paymentgateway.domain.model.Merchant;
 import com.miguelcortes.paymentgateway.domain.model.PaymentStatus;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.adapter.MerchantPersistenceAdapter;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.entity.PaymentEntity;
+import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataApiCredentialRepository;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataMerchantRepository;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataPaymentRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -53,19 +58,32 @@ class PaymentCreationEndToEndTest {
     private SpringDataMerchantRepository merchantRepository;
 
     @Autowired
+    private SpringDataApiCredentialRepository apiCredentialRepository;
+
+    @Autowired
     private MerchantPersistenceAdapter merchantAdapter;
+
+    @Autowired
+    private CreateApiCredentialUseCase createApiCredentialUseCase;
 
     @BeforeEach
     void setUp() {
         paymentRepository.deleteAll();
+        apiCredentialRepository.deleteAll();
         merchantRepository.deleteAll();
     }
 
-    @Test
-    @DisplayName("1. Full flow: POST /payments persists new payment in real PostgreSQL and returns 201 Created")
-    void shouldCreateAndPersistPaymentSuccessfully() throws Exception {
+    private GeneratedApiCredential createMerchantWithApiKey(String name, String email) {
         UUID merchantId = UUID.randomUUID();
-        merchantAdapter.save(new Merchant(merchantId, "Merchant E2E 1", "e2e1@merchant.com", Instant.now()));
+        merchantAdapter.save(new Merchant(merchantId, name, email, Instant.now()));
+        return createApiCredentialUseCase.execute(new CreateApiCredentialCommand(merchantId));
+    }
+
+    @Test
+    @DisplayName("1. Full flow: POST /payments with valid Bearer API key persists new payment in PostgreSQL")
+    void shouldCreateAndPersistPaymentSuccessfully() throws Exception {
+        GeneratedApiCredential cred = createMerchantWithApiKey("Merchant E2E 1", "e2e1@merchant.com");
+        UUID merchantId = cred.credential().getMerchantId();
 
         String idempotencyKey = "e2e-create-key-1";
         long amount = 75000L;
@@ -73,13 +91,13 @@ class PaymentCreationEndToEndTest {
 
         String requestJson = """
                 {
-                    "merchantId": "%s",
                     "amount": %d,
                     "currency": "%s"
                 }
-                """.formatted(merchantId, amount, currency);
+                """.formatted(amount, currency);
 
         MvcResult result = mockMvc.perform(post("/payments")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey())
                         .header("Idempotency-Key", idempotencyKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -94,10 +112,7 @@ class PaymentCreationEndToEndTest {
                 .andReturn();
 
         UUID generatedId = UUID.fromString(
-                JsonPath.read(
-                        result.getResponse().getContentAsString(),
-                        "$.id"
-                )
+                JsonPath.read(result.getResponse().getContentAsString(), "$.id")
         );
 
         // Header Location verification
@@ -121,10 +136,10 @@ class PaymentCreationEndToEndTest {
     }
 
     @Test
-    @DisplayName("2. Idempotency replay: repeated identical POST /payments returns the same payment and creates no duplicate rows")
+    @DisplayName("2. Idempotency replay: repeated identical POST /payments returns same payment without duplicate rows")
     void shouldHandleIdempotentReplayWithoutCreatingDuplicateRows() throws Exception {
-        UUID merchantId = UUID.randomUUID();
-        merchantAdapter.save(new Merchant(merchantId, "Merchant E2E 2", "e2e2@merchant.com", Instant.now()));
+        GeneratedApiCredential cred = createMerchantWithApiKey("Merchant E2E 2", "e2e2@merchant.com");
+        UUID merchantId = cred.credential().getMerchantId();
 
         String idempotencyKey = "e2e-replay-key-1";
         long amount = 120000L;
@@ -132,14 +147,14 @@ class PaymentCreationEndToEndTest {
 
         String requestJson = """
                 {
-                    "merchantId": "%s",
                     "amount": %d,
                     "currency": "%s"
                 }
-                """.formatted(merchantId, amount, currency);
+                """.formatted(amount, currency);
 
         // First request
         MvcResult firstResult = mockMvc.perform(post("/payments")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey())
                         .header("Idempotency-Key", idempotencyKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -152,6 +167,7 @@ class PaymentCreationEndToEndTest {
 
         // Second identical request (Replay)
         MvcResult secondResult = mockMvc.perform(post("/payments")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey())
                         .header("Idempotency-Key", idempotencyKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -162,11 +178,10 @@ class PaymentCreationEndToEndTest {
         UUID secondId = UUID.fromString(JsonPath.read(secondJson, "$.id"));
         String secondCreatedAt = JsonPath.read(secondJson, "$.createdAt");
 
-        // Assert both responses point to the same payment
         assertThat(secondId).isEqualTo(firstId);
         assertThat(secondCreatedAt).isEqualTo(firstCreatedAt);
 
-        // Assert database has exactly 1 row
+        // Database has exactly 1 row
         assertThat(paymentRepository.count()).isEqualTo(1L);
         Optional<PaymentEntity> persisted = paymentRepository.findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey);
         assertThat(persisted).isPresent();
@@ -176,29 +191,27 @@ class PaymentCreationEndToEndTest {
     @Test
     @DisplayName("3. Idempotency conflict: POST /payments with same Idempotency-Key but different payload returns 409 Conflict")
     void shouldReturn409ConflictWhenPayloadDiffersForSameIdempotencyKey() throws Exception {
-        UUID merchantId = UUID.randomUUID();
-        merchantAdapter.save(new Merchant(merchantId, "Merchant E2E 3", "e2e3@merchant.com", Instant.now()));
+        GeneratedApiCredential cred = createMerchantWithApiKey("Merchant E2E 3", "e2e3@merchant.com");
 
         String idempotencyKey = "e2e-conflict-key-1";
 
         String firstPayload = """
                 {
-                    "merchantId": "%s",
                     "amount": 50000,
                     "currency": "COP"
                 }
-                """.formatted(merchantId);
+                """;
 
         String conflictingPayload = """
                 {
-                    "merchantId": "%s",
                     "amount": 90000,
                     "currency": "COP"
                 }
-                """.formatted(merchantId);
+                """;
 
         // 1. First request succeeds
         mockMvc.perform(post("/payments")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey())
                         .header("Idempotency-Key", idempotencyKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(firstPayload))
@@ -208,6 +221,7 @@ class PaymentCreationEndToEndTest {
 
         // 2. Conflicting request fails with 409 Conflict
         mockMvc.perform(post("/payments")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey())
                         .header("Idempotency-Key", idempotencyKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(conflictingPayload))
@@ -218,17 +232,17 @@ class PaymentCreationEndToEndTest {
                 .andExpect(jsonPath("$.path").value("/payments"))
                 .andExpect(jsonPath("$.timestamp").value(notNullValue()));
 
-        // 3. Verify in PostgreSQL that no second row was inserted and original row remains intact
+        // 3. PostgreSQL verification
         assertThat(paymentRepository.count()).isEqualTo(1L);
         PaymentEntity entity = paymentRepository.findAll().get(0);
         assertThat(entity.getAmount()).isEqualTo(50000L);
     }
 
     @Test
-    @DisplayName("4. Create and retrieve: POST /payments followed by GET /payments/{id} returns the same payment")
+    @DisplayName("4. Create and retrieve: POST /payments followed by GET /payments/{id} with owner's API key returns 200 OK")
     void shouldCreatePaymentAndRetrieveItByIdSuccessfully() throws Exception {
-        UUID merchantId = UUID.randomUUID();
-        merchantAdapter.save(new Merchant(merchantId, "Merchant E2E 4", "e2e4@merchant.com", Instant.now()));
+        GeneratedApiCredential cred = createMerchantWithApiKey("Merchant E2E 4", "e2e4@merchant.com");
+        UUID merchantId = cred.credential().getMerchantId();
 
         String idempotencyKey = "e2e-get-key-1";
         long amount = 65000L;
@@ -236,14 +250,14 @@ class PaymentCreationEndToEndTest {
 
         String requestJson = """
                 {
-                    "merchantId": "%s",
                     "amount": %d,
                     "currency": "%s"
                 }
-                """.formatted(merchantId, amount, currency);
+                """.formatted(amount, currency);
 
         // 1. POST /payments
         MvcResult createResult = mockMvc.perform(post("/payments")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey())
                         .header("Idempotency-Key", idempotencyKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -255,7 +269,8 @@ class PaymentCreationEndToEndTest {
         String createdAt = JsonPath.read(createJson, "$.createdAt");
 
         // 2. GET /payments/{id}
-        mockMvc.perform(get("/payments/{id}", createdId))
+        mockMvc.perform(get("/payments/{id}", createdId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(createdId.toString()))
                 .andExpect(jsonPath("$.merchantId").value(merchantId.toString()))
@@ -273,229 +288,193 @@ class PaymentCreationEndToEndTest {
     }
 
     @Test
-    @DisplayName("5. Approve payment flow: POST /payments -> POST /payments/{id}/approve -> GET /payments/{id} and subsequent approval conflict")
-    void shouldApprovePaymentAndPreventSubsequentApprovalTransitions() throws Exception {
-        UUID merchantId = UUID.randomUUID();
-        merchantAdapter.save(new Merchant(merchantId, "Merchant E2E 5", "e2e5@merchant.com", Instant.now()));
-
-        String idempotencyKey = "e2e-approve-key-1";
-        long amount = 150000L;
-        Currency currency = Currency.COP;
+    @DisplayName("5. Multi-tenant isolation: Foreign merchant cannot retrieve payment belonging to another merchant (404 Not Found)")
+    void shouldPreventCrossTenantAccessOnGetPayment() throws Exception {
+        GeneratedApiCredential credA = createMerchantWithApiKey("Merchant A", "merchA@test.com");
+        GeneratedApiCredential credB = createMerchantWithApiKey("Merchant B", "merchB@test.com");
 
         String requestJson = """
                 {
-                    "merchantId": "%s",
-                    "amount": %d,
-                    "currency": "%s"
+                    "amount": 50000,
+                    "currency": "COP"
                 }
-                """.formatted(merchantId, amount, currency);
+                """;
 
-        // 1. POST /payments -> Creates PENDING payment
         MvcResult createResult = mockMvc.perform(post("/payments")
-                        .header("Idempotency-Key", idempotencyKey)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credA.plaintextApiKey())
+                        .header("Idempotency-Key", "merchA-pay-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("PENDING"))
                 .andReturn();
 
         UUID paymentId = UUID.fromString(JsonPath.read(createResult.getResponse().getContentAsString(), "$.id"));
 
-        // 2. POST /payments/{id}/approve -> Returns APPROVED
-        mockMvc.perform(post("/payments/{id}/approve", paymentId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(paymentId.toString()))
-                .andExpect(jsonPath("$.status").value("APPROVED"));
-
-        // 3. GET /payments/{id} -> Returns APPROVED
-        mockMvc.perform(get("/payments/{id}", paymentId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(paymentId.toString()))
-                .andExpect(jsonPath("$.status").value("APPROVED"));
-
-        // 4. Verify in PostgreSQL directly
-        Optional<PaymentEntity> entity = paymentRepository.findById(paymentId);
-        assertThat(entity).isPresent();
-        assertThat(entity.get().getStatus()).isEqualTo(PaymentStatus.APPROVED);
-
-        // 5. Subsequent POST /payments/{id}/approve -> Returns 409 Conflict
-        mockMvc.perform(post("/payments/{id}/approve", paymentId))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.status").value(409))
-                .andExpect(jsonPath("$.error").value("Conflict"))
-                .andExpect(jsonPath("$.message").value("Cannot approve payment with status APPROVED"))
-                .andExpect(jsonPath("$.path").value("/payments/" + paymentId + "/approve"));
-
-        // 6. Verify in PostgreSQL that status remains APPROVED
-        Optional<PaymentEntity> entityAfterConflict = paymentRepository.findById(paymentId);
-        assertThat(entityAfterConflict).isPresent();
-        assertThat(entityAfterConflict.get().getStatus()).isEqualTo(PaymentStatus.APPROVED);
+        // Merchant B attempts to GET Merchant A's payment -> 404 Not Found
+        mockMvc.perform(get("/payments/{id}", paymentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credB.plaintextApiKey()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.message").value("Payment not found with id: " + paymentId))
+                .andExpect(jsonPath("$.path").value("/payments/" + paymentId));
     }
 
     @Test
-    @DisplayName("6. Decline payment flow: POST /payments -> POST /payments/{id}/decline -> GET /payments/{id} and subsequent decline conflict")
-    void shouldDeclinePaymentAndPreventSubsequentDeclineTransitions() throws Exception {
-        UUID merchantId = UUID.randomUUID();
-        merchantAdapter.save(new Merchant(merchantId, "Merchant E2E 6", "e2e6@merchant.com", Instant.now()));
-
-        String idempotencyKey = "e2e-decline-key-1";
-        long amount = 45000L;
-        Currency currency = Currency.COP;
+    @DisplayName("6. Cancel payment: Foreign merchant cannot cancel payment (404), owner cancels successfully (200)")
+    void shouldCancelPaymentSuccessfullyAndPreventForeignMerchantCancellation() throws Exception {
+        GeneratedApiCredential credA = createMerchantWithApiKey("Merchant A Cancel", "merchAcancel@test.com");
+        GeneratedApiCredential credB = createMerchantWithApiKey("Merchant B Cancel", "merchBcancel@test.com");
 
         String requestJson = """
                 {
-                    "merchantId": "%s",
-                    "amount": %d,
-                    "currency": "%s"
+                    "amount": 85000,
+                    "currency": "USD"
                 }
-                """.formatted(merchantId, amount, currency);
+                """;
 
-        // 1. POST /payments -> Creates PENDING payment
+        // 1. Merchant A creates payment
         MvcResult createResult = mockMvc.perform(post("/payments")
-                        .header("Idempotency-Key", idempotencyKey)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credA.plaintextApiKey())
+                        .header("Idempotency-Key", "cancel-e2e-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("PENDING"))
                 .andReturn();
 
         UUID paymentId = UUID.fromString(JsonPath.read(createResult.getResponse().getContentAsString(), "$.id"));
 
-        // 2. POST /payments/{id}/decline -> Returns DECLINED
-        mockMvc.perform(post("/payments/{id}/decline", paymentId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(paymentId.toString()))
-                .andExpect(jsonPath("$.status").value("DECLINED"));
+        // 2. Merchant B attempts to cancel Merchant A's payment -> 404 Not Found
+        mockMvc.perform(post("/payments/{id}/cancel", paymentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credB.plaintextApiKey()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.message").value("Payment not found with id: " + paymentId));
 
-        // 3. GET /payments/{id} -> Returns DECLINED
-        mockMvc.perform(get("/payments/{id}", paymentId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(paymentId.toString()))
-                .andExpect(jsonPath("$.status").value("DECLINED"));
+        // In PostgreSQL status remains PENDING
+        assertThat(paymentRepository.findById(paymentId).get().getStatus()).isEqualTo(PaymentStatus.PENDING);
 
-        // 4. Verify in PostgreSQL directly
-        Optional<PaymentEntity> entity = paymentRepository.findById(paymentId);
-        assertThat(entity).isPresent();
-        assertThat(entity.get().getStatus()).isEqualTo(PaymentStatus.DECLINED);
-
-        // 5. Subsequent POST /payments/{id}/decline -> Returns 409 Conflict
-        mockMvc.perform(post("/payments/{id}/decline", paymentId))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.status").value(409))
-                .andExpect(jsonPath("$.error").value("Conflict"))
-                .andExpect(jsonPath("$.message").value("Cannot decline payment with status DECLINED"))
-                .andExpect(jsonPath("$.path").value("/payments/" + paymentId + "/decline"));
-
-        // 6. Verify in PostgreSQL that status remains DECLINED
-        Optional<PaymentEntity> entityAfterConflict = paymentRepository.findById(paymentId);
-        assertThat(entityAfterConflict).isPresent();
-        assertThat(entityAfterConflict.get().getStatus()).isEqualTo(PaymentStatus.DECLINED);
-    }
-
-    @Test
-    @DisplayName("7. Cancel payment flow: POST /payments -> POST /payments/{id}/cancel -> GET /payments/{id} and subsequent cancel conflict")
-    void shouldCancelPaymentAndPreventSubsequentCancelTransitions() throws Exception {
-        UUID merchantId = UUID.randomUUID();
-        merchantAdapter.save(new Merchant(merchantId, "Merchant E2E 7", "e2e7@merchant.com", Instant.now()));
-
-        String idempotencyKey = "e2e-cancel-key-1";
-        long amount = 85000L;
-        Currency currency = Currency.USD;
-
-        String requestJson = """
-                {
-                    "merchantId": "%s",
-                    "amount": %d,
-                    "currency": "%s"
-                }
-                """.formatted(merchantId, amount, currency);
-
-        // 1. POST /payments -> Creates PENDING payment
-        MvcResult createResult = mockMvc.perform(post("/payments")
-                        .header("Idempotency-Key", idempotencyKey)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestJson))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("PENDING"))
-                .andReturn();
-
-        UUID paymentId = UUID.fromString(JsonPath.read(createResult.getResponse().getContentAsString(), "$.id"));
-
-        // 2. POST /payments/{id}/cancel -> Returns CANCELLED
-        mockMvc.perform(post("/payments/{id}/cancel", paymentId))
+        // 3. Merchant A cancels their own payment -> 200 OK CANCELLED
+        mockMvc.perform(post("/payments/{id}/cancel", paymentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credA.plaintextApiKey()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(paymentId.toString()))
                 .andExpect(jsonPath("$.status").value("CANCELLED"));
 
-        // 3. GET /payments/{id} -> Returns CANCELLED
-        mockMvc.perform(get("/payments/{id}", paymentId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(paymentId.toString()))
-                .andExpect(jsonPath("$.status").value("CANCELLED"));
+        assertThat(paymentRepository.findById(paymentId).get().getStatus()).isEqualTo(PaymentStatus.CANCELLED);
 
-        // 4. Verify in PostgreSQL directly
-        Optional<PaymentEntity> entity = paymentRepository.findById(paymentId);
-        assertThat(entity).isPresent();
-        assertThat(entity.get().getStatus()).isEqualTo(PaymentStatus.CANCELLED);
-
-        // 5. Subsequent POST /payments/{id}/cancel -> Returns 409 Conflict
-        mockMvc.perform(post("/payments/{id}/cancel", paymentId))
+        // 4. Repeated cancel -> 409 Conflict
+        mockMvc.perform(post("/payments/{id}/cancel", paymentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + credA.plaintextApiKey()))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.status").value(409))
-                .andExpect(jsonPath("$.error").value("Conflict"))
-                .andExpect(jsonPath("$.message").value("Cannot cancel payment with status CANCELLED"))
-                .andExpect(jsonPath("$.path").value("/payments/" + paymentId + "/cancel"));
-
-        // 6. Verify in PostgreSQL that status remains CANCELLED
-        Optional<PaymentEntity> entityAfterConflict = paymentRepository.findById(paymentId);
-        assertThat(entityAfterConflict).isPresent();
-        assertThat(entityAfterConflict.get().getStatus()).isEqualTo(PaymentStatus.CANCELLED);
+                .andExpect(jsonPath("$.status").value(409));
     }
 
     @Test
-    @DisplayName("8. Cross-state conflict: Approved payment cannot be cancelled and remains APPROVED")
-    void shouldPreventCancellingAlreadyApprovedPayment() throws Exception {
-        UUID merchantId = UUID.randomUUID();
-        merchantAdapter.save(new Merchant(merchantId, "Merchant E2E 8", "e2e8@merchant.com", Instant.now()));
+    @DisplayName("7. DenyAll endpoints: POST /approve and /decline return 403 Forbidden for authenticated merchants")
+    void shouldReturn403ForbiddenWhenCallingApproveOrDecline() throws Exception {
+        GeneratedApiCredential cred = createMerchantWithApiKey("Merchant Auth", "merchAuth@test.com");
+        UUID dummyId = UUID.randomUUID();
 
-        String idempotencyKey = "e2e-cross-key-1";
-        long amount = 110000L;
-        Currency currency = Currency.COP;
+        mockMvc.perform(post("/payments/{id}/approve", dummyId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message").value("Access denied"))
+                .andExpect(jsonPath("$.path").value("/payments/" + dummyId + "/approve"));
+
+        mockMvc.perform(post("/payments/{id}/decline", dummyId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message").value("Access denied"))
+                .andExpect(jsonPath("$.path").value("/payments/" + dummyId + "/decline"));
+    }
+
+    @Test
+    @DisplayName("8. Unknown JSON property: POST /payments containing unknown property 'merchantId' returns 400 Bad Request")
+    void shouldReturn400BadRequestWhenUnknownPropertyMerchantIdIsPassed() throws Exception {
+        GeneratedApiCredential cred = createMerchantWithApiKey("Merchant Unknown", "unknown@test.com");
 
         String requestJson = """
                 {
                     "merchantId": "%s",
-                    "amount": %d,
-                    "currency": "%s"
+                    "amount": 50000,
+                    "currency": "COP"
                 }
-                """.formatted(merchantId, amount, currency);
+                """.formatted(UUID.randomUUID());
 
-        // 1. POST /payments -> Creates PENDING payment
-        MvcResult createResult = mockMvc.perform(post("/payments")
-                        .header("Idempotency-Key", idempotencyKey)
+        mockMvc.perform(post("/payments")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey())
+                        .header("Idempotency-Key", "unknown-prop-key")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
-                .andExpect(status().isCreated())
-                .andReturn();
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value("Malformed JSON request or invalid field format"))
+                .andExpect(jsonPath("$.path").value("/payments"));
 
-        UUID paymentId = UUID.fromString(JsonPath.read(createResult.getResponse().getContentAsString(), "$.id"));
+        assertThat(paymentRepository.count()).isEqualTo(0L);
+    }
 
-        // 2. POST /payments/{id}/approve -> Sets APPROVED
-        mockMvc.perform(post("/payments/{id}/approve", paymentId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("APPROVED"));
+    @Test
+    @DisplayName("9. Authentication failures: Missing, malformed, non-existent, or revoked API key returns 401 Unauthorized")
+    void shouldReturn401UnauthorizedWhenApiKeyIsMissingOrInvalid() throws Exception {
+        GeneratedApiCredential cred = createMerchantWithApiKey("Merchant Revoke", "revoke@test.com");
 
-        // 3. POST /payments/{id}/cancel -> Returns 409 Conflict
-        mockMvc.perform(post("/payments/{id}/cancel", paymentId))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.status").value(409))
-                .andExpect(jsonPath("$.error").value("Conflict"))
-                .andExpect(jsonPath("$.message").value("Cannot cancel payment with status APPROVED"))
-                .andExpect(jsonPath("$.path").value("/payments/" + paymentId + "/cancel"));
+        String payload = """
+                {
+                    "amount": 50000,
+                    "currency": "COP"
+                }
+                """;
 
-        // 4. Verify in PostgreSQL that status remains APPROVED
-        Optional<PaymentEntity> entity = paymentRepository.findById(paymentId);
-        assertThat(entity).isPresent();
-        assertThat(entity.get().getStatus()).isEqualTo(PaymentStatus.APPROVED);
+        // Missing Authorization header
+        mockMvc.perform(post("/payments")
+                        .header("Idempotency-Key", "auth-fail-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.message").value("Invalid or missing API key"));
+
+        // Malformed Bearer token
+        mockMvc.perform(post("/payments")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer invalid-token-format")
+                        .header("Idempotency-Key", "auth-fail-2")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.message").value("Invalid or missing API key"));
+
+        // Non-existent API key
+        String nonExistentKey = "pg_test_nonexist1234_1234567890123456789012345678901234567890123";
+        mockMvc.perform(post("/payments")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + nonExistentKey)
+                        .header("Idempotency-Key", "auth-fail-3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.message").value("Invalid or missing API key"));
+
+        // Revoked API key
+        var entity = apiCredentialRepository.findById(cred.credential().getId()).get();
+        entity.setStatus(com.miguelcortes.paymentgateway.domain.model.CredentialStatus.REVOKED);
+        entity.setRevokedAt(Instant.now());
+        apiCredentialRepository.save(entity);
+
+        mockMvc.perform(post("/payments")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey())
+                        .header("Idempotency-Key", "auth-fail-4")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.message").value("Invalid or missing API key"));
     }
 }

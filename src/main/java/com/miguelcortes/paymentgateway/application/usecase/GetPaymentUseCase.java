@@ -14,8 +14,14 @@ public class GetPaymentUseCase {
         this.paymentRepositoryPort = paymentRepositoryPort;
     }
 
-    public Payment execute(UUID id) {
-        return paymentRepositoryPort.findById(id)
+    public Payment execute(UUID id, UUID requesterMerchantId) {
+        if (id == null) {
+            throw new IllegalArgumentException("Payment ID must not be null");
+        }
+        if (requesterMerchantId == null) {
+            throw new IllegalArgumentException("Requester merchant ID must not be null");
+        }
+        return paymentRepositoryPort.findByIdAndMerchantId(id, requesterMerchantId)
                 .orElseThrow(() -> new PaymentNotFoundException(id));
     }
 }

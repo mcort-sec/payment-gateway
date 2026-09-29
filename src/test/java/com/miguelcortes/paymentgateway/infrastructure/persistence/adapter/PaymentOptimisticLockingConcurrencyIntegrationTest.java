@@ -96,7 +96,7 @@ class PaymentOptimisticLockingConcurrencyIntegrationTest {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
             Future<Payment> approveFuture = executor.submit(() -> approveUseCase.execute(paymentId));
-            Future<Payment> cancelFuture = executor.submit(() -> cancelUseCase.execute(paymentId));
+            Future<Payment> cancelFuture = executor.submit(() -> cancelUseCase.execute(paymentId, merchantId));
 
             List<Future<Payment>> futures = List.of(approveFuture, cancelFuture);
             int successCount = 0;
@@ -142,10 +142,7 @@ class PaymentOptimisticLockingConcurrencyIntegrationTest {
             this.barrier = new CyclicBarrier(parties);
         }
 
-        @Override
-        public Optional<Payment> findById(UUID id) {
-            Optional<Payment> result = delegate.findById(id);
-
+        private void syncRead(Optional<Payment> result) {
             int call = readCounter.incrementAndGet();
             if (call <= 2 && result.isPresent()) {
                 Payment payment = result.get();
@@ -161,7 +158,19 @@ class PaymentOptimisticLockingConcurrencyIntegrationTest {
                     throw new RuntimeException("Barrier timeout or failure during concurrent read", e);
                 }
             }
+        }
 
+        @Override
+        public Optional<Payment> findById(UUID id) {
+            Optional<Payment> result = delegate.findById(id);
+            syncRead(result);
+            return result;
+        }
+
+        @Override
+        public Optional<Payment> findByIdAndMerchantId(UUID id, UUID merchantId) {
+            Optional<Payment> result = delegate.findByIdAndMerchantId(id, merchantId);
+            syncRead(result);
             return result;
         }
 
@@ -173,11 +182,6 @@ class PaymentOptimisticLockingConcurrencyIntegrationTest {
         @Override
         public Optional<Payment> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey) {
             return delegate.findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey);
-        }
-
-        @Override
-        public Optional<Payment> findByIdAndMerchantId(UUID id, UUID merchantId) {
-            return delegate.findByIdAndMerchantId(id, merchantId);
         }
     }
 }

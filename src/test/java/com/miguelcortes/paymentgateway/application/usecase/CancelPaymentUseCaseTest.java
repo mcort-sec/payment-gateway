@@ -32,12 +32,13 @@ class CancelPaymentUseCaseTest {
     }
 
     @Test
-    @DisplayName("Should cancel PENDING payment and save it exactly once")
+    @DisplayName("Should cancel PENDING payment and save it exactly once when merchant matches")
     void shouldCancelPendingPaymentAndSaveOnce() {
         UUID paymentId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         Payment pendingPayment = new Payment(
                 paymentId,
-                UUID.randomUUID(),
+                merchantId,
                 100000L,
                 Currency.COP,
                 "key-1",
@@ -46,7 +47,7 @@ class CancelPaymentUseCaseTest {
         repository.save(pendingPayment);
         repository.resetSaveCounter();
 
-        Payment cancelledPayment = useCase.execute(paymentId);
+        Payment cancelledPayment = useCase.execute(paymentId, merchantId);
 
         assertEquals(PaymentStatus.CANCELLED, cancelledPayment.getStatus());
         assertSame(pendingPayment, cancelledPayment);
@@ -57,10 +58,11 @@ class CancelPaymentUseCaseTest {
     @DisplayName("Should throw PaymentNotFoundException when payment does not exist")
     void shouldThrowPaymentNotFoundExceptionWhenPaymentDoesNotExist() {
         UUID nonExistentId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
 
         PaymentNotFoundException exception = assertThrows(
                 PaymentNotFoundException.class,
-                () -> useCase.execute(nonExistentId)
+                () -> useCase.execute(nonExistentId, merchantId)
         );
 
         assertEquals("Payment not found with id: " + nonExistentId, exception.getMessage());
@@ -68,12 +70,42 @@ class CancelPaymentUseCaseTest {
     }
 
     @Test
+    @DisplayName("Should throw PaymentNotFoundException when payment belongs to a different merchant (404 precedence)")
+    void shouldThrowPaymentNotFoundExceptionWhenPaymentBelongsToDifferentMerchant() {
+        UUID paymentId = UUID.randomUUID();
+        UUID ownerMerchantId = UUID.randomUUID();
+        UUID foreignMerchantId = UUID.randomUUID();
+
+        Payment payment = Payment.reconstitute(
+                paymentId,
+                ownerMerchantId,
+                100000L,
+                Currency.COP,
+                PaymentStatus.APPROVED, // Even if already APPROVED, foreign merchant must get 404, not 409
+                "key-foreign",
+                Instant.now(),
+                0L
+        );
+        repository.save(payment);
+        repository.resetSaveCounter();
+
+        PaymentNotFoundException exception = assertThrows(
+                PaymentNotFoundException.class,
+                () -> useCase.execute(paymentId, foreignMerchantId)
+        );
+
+        assertEquals("Payment not found with id: " + paymentId, exception.getMessage());
+        assertEquals(0, repository.saveCallCount);
+    }
+
+    @Test
     @DisplayName("Should throw InvalidPaymentStateException and not save when payment is already APPROVED")
     void shouldThrowInvalidPaymentStateExceptionWhenAlreadyApproved() {
         UUID paymentId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         Payment payment = Payment.reconstitute(
                 paymentId,
-                UUID.randomUUID(),
+                merchantId,
                 100000L,
                 Currency.COP,
                 PaymentStatus.APPROVED,
@@ -86,7 +118,7 @@ class CancelPaymentUseCaseTest {
 
         assertThrows(
                 InvalidPaymentStateException.class,
-                () -> useCase.execute(paymentId)
+                () -> useCase.execute(paymentId, merchantId)
         );
 
         assertEquals(0, repository.saveCallCount);
@@ -96,9 +128,10 @@ class CancelPaymentUseCaseTest {
     @DisplayName("Should throw InvalidPaymentStateException and not save when payment is already DECLINED")
     void shouldThrowInvalidPaymentStateExceptionWhenAlreadyDeclined() {
         UUID paymentId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         Payment payment = Payment.reconstitute(
                 paymentId,
-                UUID.randomUUID(),
+                merchantId,
                 100000L,
                 Currency.COP,
                 PaymentStatus.DECLINED,
@@ -111,7 +144,7 @@ class CancelPaymentUseCaseTest {
 
         assertThrows(
                 InvalidPaymentStateException.class,
-                () -> useCase.execute(paymentId)
+                () -> useCase.execute(paymentId, merchantId)
         );
 
         assertEquals(0, repository.saveCallCount);
@@ -121,9 +154,10 @@ class CancelPaymentUseCaseTest {
     @DisplayName("Should throw InvalidPaymentStateException and not save when payment is already CANCELLED")
     void shouldThrowInvalidPaymentStateExceptionWhenAlreadyCancelled() {
         UUID paymentId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         Payment payment = Payment.reconstitute(
                 paymentId,
-                UUID.randomUUID(),
+                merchantId,
                 100000L,
                 Currency.COP,
                 PaymentStatus.CANCELLED,
@@ -136,10 +170,36 @@ class CancelPaymentUseCaseTest {
 
         assertThrows(
                 InvalidPaymentStateException.class,
-                () -> useCase.execute(paymentId)
+                () -> useCase.execute(paymentId, merchantId)
         );
 
         assertEquals(0, repository.saveCallCount);
+    }
+
+    @Test
+    @DisplayName("Should throw IllegalArgumentException when payment id is null")
+    void shouldThrowIllegalArgumentExceptionWhenIdIsNull() {
+        UUID merchantId = UUID.randomUUID();
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> useCase.execute(null, merchantId)
+        );
+
+        assertEquals("Payment ID must not be null", exception.getMessage());
+    }
+
+    @Test
+    @DisplayName("Should throw IllegalArgumentException when requester merchant id is null")
+    void shouldThrowIllegalArgumentExceptionWhenRequesterMerchantIdIsNull() {
+        UUID paymentId = UUID.randomUUID();
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> useCase.execute(paymentId, null)
+        );
+
+        assertEquals("Requester merchant ID must not be null", exception.getMessage());
     }
 
     private static class InMemoryPaymentRepository implements PaymentRepositoryPort {
