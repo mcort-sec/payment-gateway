@@ -22,6 +22,18 @@ public class Payment {
             String idempotencyKey,
             Instant createdAt
     ) {
+        this(id, customerId, amount, currency, PaymentStatus.PENDING, idempotencyKey, createdAt);
+    }
+
+    private Payment(
+            UUID id,
+            UUID customerId,
+            long amount,
+            Currency currency,
+            PaymentStatus status,
+            String idempotencyKey,
+            Instant createdAt
+    ) {
         if (id == null) {
             throw new InvalidPaymentException("Payment ID cannot be null");
         }
@@ -34,6 +46,9 @@ public class Payment {
         if (currency == null) {
             throw new InvalidPaymentException("Currency cannot be null");
         }
+        if (status == null) {
+            throw new InvalidPaymentException("Payment status cannot be null");
+        }
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             throw new InvalidPaymentException("Idempotency key cannot be null, empty, or blank");
         }
@@ -45,9 +60,21 @@ public class Payment {
         this.customerId = customerId;
         this.amount = amount;
         this.currency = currency;
-        this.status = PaymentStatus.PENDING;
+        this.status = status;
         this.idempotencyKey = idempotencyKey;
         this.createdAt = createdAt;
+    }
+
+    public static Payment reconstitute(
+            UUID id,
+            UUID customerId,
+            long amount,
+            Currency currency,
+            PaymentStatus status,
+            String idempotencyKey,
+            Instant createdAt
+    ) {
+        return new Payment(id, customerId, amount, currency, status, idempotencyKey, createdAt);
     }
 
     public void approve() {

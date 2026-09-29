@@ -1,0 +1,91 @@
+package com.miguelcortes.paymentgateway.infrastructure.persistence.entity;
+
+import com.miguelcortes.paymentgateway.domain.model.Currency;
+import com.miguelcortes.paymentgateway.domain.model.PaymentStatus;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+import java.time.Instant;
+import java.util.UUID;
+
+@Entity
+@Table(name = "payments")
+public class PaymentEntity {
+
+    @Id
+    @Column(name = "id", nullable = false, updatable = false)
+    private UUID id;
+
+    @Column(name = "customer_id", nullable = false, updatable = false)
+    private UUID customerId;
+
+    @Column(name = "amount", nullable = false)
+    private long amount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "currency", nullable = false, length = 10)
+    private Currency currency;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    private PaymentStatus status;
+
+    @Column(name = "idempotency_key", nullable = false, length = 255)
+    private String idempotencyKey;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    protected PaymentEntity() {
+    }
+
+    public PaymentEntity(
+            UUID id,
+            UUID customerId,
+            long amount,
+            Currency currency,
+            PaymentStatus status,
+            String idempotencyKey,
+            Instant createdAt
+    ) {
+        this.id = id;
+        this.customerId = customerId;
+        this.amount = amount;
+        this.currency = currency;
+        this.status = status;
+        this.idempotencyKey = idempotencyKey;
+        this.createdAt = createdAt;
+    }
+
+    public UUID getId() {
+        return id;
+    }
+
+    public UUID getCustomerId() {
+        return customerId;
+    }
+
+    public long getAmount() {
+        return amount;
+    }
+
+    public Currency getCurrency() {
+        return currency;
+    }
+
+    public PaymentStatus getStatus() {
+        return status;
+    }
+
+    public String getIdempotencyKey() {
+        return idempotencyKey;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+}

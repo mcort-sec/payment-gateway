@@ -251,6 +251,79 @@ class PaymentTest {
         assertEquals("Cannot approve payment with status CANCELLED", exception.getMessage());
     }
 
+    @Test
+    void shouldReconstitutePaymentWithApprovedStatus() {
+        UUID id = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-09-28T08:00:00Z");
+
+        Payment payment = Payment.reconstitute(
+                id,
+                customerId,
+                250000L,
+                Currency.COP,
+                PaymentStatus.APPROVED,
+                "req-reconstitute-1",
+                createdAt
+        );
+
+        assertEquals(id, payment.getId());
+        assertEquals(customerId, payment.getCustomerId());
+        assertEquals(250000L, payment.getAmount());
+        assertEquals(Currency.COP, payment.getCurrency());
+        assertEquals(PaymentStatus.APPROVED, payment.getStatus());
+        assertEquals("req-reconstitute-1", payment.getIdempotencyKey());
+        assertEquals(createdAt, payment.getCreatedAt());
+    }
+
+    @Test
+    void shouldReconstitutePaymentWithDeclinedStatus() {
+        Payment payment = Payment.reconstitute(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                50000L,
+                Currency.USD,
+                PaymentStatus.DECLINED,
+                "req-reconstitute-2",
+                Instant.now()
+        );
+
+        assertEquals(PaymentStatus.DECLINED, payment.getStatus());
+    }
+
+    @Test
+    void shouldReconstitutePaymentWithCancelledStatus() {
+        Payment payment = Payment.reconstitute(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                75000L,
+                Currency.COP,
+                PaymentStatus.CANCELLED,
+                "req-reconstitute-3",
+                Instant.now()
+        );
+
+        assertEquals(PaymentStatus.CANCELLED, payment.getStatus());
+    }
+
+    @Test
+    void shouldThrowExceptionWhenReconstitutingWithNullStatus() {
+        InvalidPaymentException exception = assertThrows(
+                InvalidPaymentException.class,
+                () -> Payment.reconstitute(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        1000L,
+                        Currency.USD,
+                        null,
+                        "key-1",
+                        Instant.now()
+                )
+        );
+
+        assertEquals("Payment status cannot be null", exception.getMessage());
+    }
+
     private Payment createValidPayment() {
         return new Payment(
                 UUID.randomUUID(),
