@@ -1,11 +1,15 @@
 package com.miguelcortes.paymentgateway.infrastructure.config;
 
+import com.miguelcortes.paymentgateway.application.port.out.ApiCredentialRepositoryPort;
+import com.miguelcortes.paymentgateway.application.port.out.ApiKeyGeneratorPort;
+import com.miguelcortes.paymentgateway.application.port.out.ApiKeyHasherPort;
 import com.miguelcortes.paymentgateway.application.port.out.IdGenerator;
 import com.miguelcortes.paymentgateway.application.port.out.MerchantRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.PaymentRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.TimeProvider;
 import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CancelPaymentUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.CreateApiCredentialUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreateMerchantUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreatePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.DeclinePaymentUseCase;
@@ -54,6 +58,25 @@ public class ApplicationConfig {
     ) {
         return new CreateMerchantUseCase(
                 merchantRepositoryPort,
+                idGenerator,
+                timeProvider
+        );
+    }
+
+    @Bean
+    public CreateApiCredentialUseCase createApiCredentialUseCase(
+            ApiCredentialRepositoryPort apiCredentialRepositoryPort,
+            MerchantRepositoryPort merchantRepositoryPort,
+            ApiKeyGeneratorPort apiKeyGeneratorPort,
+            ApiKeyHasherPort apiKeyHasherPort,
+            IdGenerator idGenerator,
+            TimeProvider timeProvider
+    ) {
+        return new CreateApiCredentialUseCase(
+                apiCredentialRepositoryPort,
+                merchantRepositoryPort,
+                apiKeyGeneratorPort,
+                apiKeyHasherPort,
                 idGenerator,
                 timeProvider
         );
