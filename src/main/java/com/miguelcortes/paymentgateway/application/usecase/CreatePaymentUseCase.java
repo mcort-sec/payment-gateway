@@ -1,6 +1,7 @@
 package com.miguelcortes.paymentgateway.application.usecase;
 
 import com.miguelcortes.paymentgateway.application.command.CreatePaymentCommand;
+import com.miguelcortes.paymentgateway.application.exception.DuplicateIdempotencyKeyException;
 import com.miguelcortes.paymentgateway.application.exception.IdempotencyConflictException;
 import com.miguelcortes.paymentgateway.application.port.out.IdGenerator;
 import com.miguelcortes.paymentgateway.application.port.out.PaymentRepositoryPort;
@@ -49,8 +50,17 @@ public class CreatePaymentUseCase {
                 createdAt
         );
 
-        paymentRepositoryPort.save(newPayment);
-        return newPayment;
+        try {
+            paymentRepositoryPort.save(newPayment);
+            return newPayment;
+        } catch (DuplicateIdempotencyKeyException ex) {
+            Payment concurrentWinner = paymentRepositoryPort
+                    .findByCustomerIdAndIdempotencyKey(command.customerId(), command.idempotencyKey())
+                    .orElseThrow(() -> ex);
+
+            validateIdempotencyPayload(concurrentWinner, command);
+            return concurrentWinner;
+        }
     }
 
     private void validateIdempotencyPayload(Payment payment, CreatePaymentCommand command) {
@@ -60,7 +70,7 @@ public class CreatePaymentUseCase {
         if (!matches) {
             throw new IdempotencyConflictException(
                     "Idempotency key was already used with different payment parameters"
-            );
+                );
         }
     }
 }

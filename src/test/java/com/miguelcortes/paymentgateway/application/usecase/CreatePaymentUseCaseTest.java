@@ -1,6 +1,7 @@
 package com.miguelcortes.paymentgateway.application.usecase;
 
 import com.miguelcortes.paymentgateway.application.command.CreatePaymentCommand;
+import com.miguelcortes.paymentgateway.application.exception.DuplicateIdempotencyKeyException;
 import com.miguelcortes.paymentgateway.application.exception.IdempotencyConflictException;
 import com.miguelcortes.paymentgateway.application.port.out.IdGenerator;
 import com.miguelcortes.paymentgateway.application.port.out.PaymentRepositoryPort;
@@ -161,21 +162,95 @@ class CreatePaymentUseCaseTest {
         assertEquals(0, fakeTimeProvider.callCount);
     }
 
+    @Test
+    void shouldRecoverAndReturnExistingPaymentWhenConcurrentInsertThrowsDuplicateKeyWithSamePayload() {
+        UUID customerId = UUID.randomUUID();
+        String idempotencyKey = "req-1005";
+
+        Payment concurrentWinner = new Payment(
+                UUID.randomUUID(),
+                customerId,
+                150000L,
+                Currency.COP,
+                idempotencyKey,
+                FIXED_TIME
+        );
+
+        fakeRepository.simulateConcurrentDuplicateOnSave(concurrentWinner);
+
+        CreatePaymentCommand command = new CreatePaymentCommand(
+                customerId,
+                150000L,
+                Currency.COP,
+                idempotencyKey
+        );
+
+        Payment result = useCase.execute(command);
+
+        assertSame(concurrentWinner, result);
+        assertEquals(1, fakeRepository.saveCallCount);
+        assertEquals(1, fakeIdGenerator.callCount);
+        assertEquals(1, fakeTimeProvider.callCount);
+    }
+
+    @Test
+    void shouldThrowIdempotencyConflictWhenConcurrentInsertThrowsDuplicateKeyWithDifferentPayload() {
+        UUID customerId = UUID.randomUUID();
+        String idempotencyKey = "req-1006";
+
+        Payment concurrentWinner = new Payment(
+                UUID.randomUUID(),
+                customerId,
+                150000L,
+                Currency.COP,
+                idempotencyKey,
+                FIXED_TIME
+        );
+
+        fakeRepository.simulateConcurrentDuplicateOnSave(concurrentWinner);
+
+        CreatePaymentCommand commandWithDifferentAmount = new CreatePaymentCommand(
+                customerId,
+                200000L,
+                Currency.COP,
+                idempotencyKey
+        );
+
+        IdempotencyConflictException exception = assertThrows(
+                IdempotencyConflictException.class,
+                () -> useCase.execute(commandWithDifferentAmount)
+        );
+
+        assertEquals("Idempotency key was already used with different payment parameters", exception.getMessage());
+        assertEquals(1, fakeRepository.saveCallCount);
+    }
+
     // --- Fakes Manuales ---
 
     private static class InMemoryPaymentRepository implements PaymentRepositoryPort {
         private final Map<String, Payment> storage = new HashMap<>();
         private int saveCallCount = 0;
         private Payment lastSavedPayment;
+        private Payment concurrentWinnerToInjectOnSave;
 
         void seed(Payment payment) {
             storage.put(key(payment.getCustomerId(), payment.getIdempotencyKey()), payment);
+        }
+
+        void simulateConcurrentDuplicateOnSave(Payment winner) {
+            this.concurrentWinnerToInjectOnSave = winner;
         }
 
         @Override
         public void save(Payment payment) {
             saveCallCount++;
             lastSavedPayment = payment;
+            if (concurrentWinnerToInjectOnSave != null) {
+                seed(concurrentWinnerToInjectOnSave);
+                Payment winner = concurrentWinnerToInjectOnSave;
+                concurrentWinnerToInjectOnSave = null;
+                throw new DuplicateIdempotencyKeyException("Duplicate key violation for: " + winner.getIdempotencyKey());
+            }
             storage.put(key(payment.getCustomerId(), payment.getIdempotencyKey()), payment);
         }
 

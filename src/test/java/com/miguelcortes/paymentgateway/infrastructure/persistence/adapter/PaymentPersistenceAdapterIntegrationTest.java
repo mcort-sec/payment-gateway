@@ -1,11 +1,10 @@
 package com.miguelcortes.paymentgateway.infrastructure.persistence.adapter;
 
+import com.miguelcortes.paymentgateway.application.exception.DuplicateIdempotencyKeyException;
 import com.miguelcortes.paymentgateway.domain.model.Currency;
 import com.miguelcortes.paymentgateway.domain.model.Payment;
 import com.miguelcortes.paymentgateway.domain.model.PaymentStatus;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.mapper.PaymentMapper;
-import jakarta.persistence.EntityManager;
-import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -38,9 +37,6 @@ class PaymentPersistenceAdapterIntegrationTest {
     @Autowired
     private PaymentPersistenceAdapter adapter;
 
-    @Autowired
-    private EntityManager entityManager;
-
     @Test
     void shouldSaveAndRetrieveNewPaymentByIdAndByCustomerAndIdempotencyKey() {
         UUID id = UUID.randomUUID();
@@ -58,7 +54,6 @@ class PaymentPersistenceAdapterIntegrationTest {
         );
 
         adapter.save(newPayment);
-        entityManager.flush();
 
         Optional<Payment> byId = adapter.findById(id);
         assertTrue(byId.isPresent());
@@ -96,7 +91,6 @@ class PaymentPersistenceAdapterIntegrationTest {
         );
 
         adapter.save(approvedPayment);
-        entityManager.flush();
 
         Optional<Payment> retrieved = adapter.findById(id);
         assertTrue(retrieved.isPresent());
@@ -106,7 +100,7 @@ class PaymentPersistenceAdapterIntegrationTest {
     }
 
     @Test
-    void shouldEnforcePostgresUniqueConstraintOnCustomerIdAndIdempotencyKey() {
+    void shouldTranslatePostgresUniqueConstraintToDuplicateIdempotencyKeyException() {
         UUID customerId = UUID.randomUUID();
         String idempotencyKey = "req-it-duplicate";
 
@@ -129,24 +123,12 @@ class PaymentPersistenceAdapterIntegrationTest {
         );
 
         adapter.save(payment1);
-        entityManager.flush();
 
-        ConstraintViolationException exception = assertThrows(
-                ConstraintViolationException.class,
-                () -> {
-                    adapter.save(payment2WithSameKey);
-                    entityManager.flush();
-                }
+        DuplicateIdempotencyKeyException exception = assertThrows(
+                DuplicateIdempotencyKeyException.class,
+                () -> adapter.save(payment2WithSameKey)
         );
 
-        assertEquals(
-                "uq_payments_customer_idempotency",
-                exception.getConstraintName()
-        );
-
-        assertEquals(
-                "23505",
-                exception.getSQLState()
-        );
+        assertTrue(exception.getMessage().contains(idempotencyKey));
     }
 }
