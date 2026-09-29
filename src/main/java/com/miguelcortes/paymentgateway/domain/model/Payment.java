@@ -6,13 +6,14 @@ import java.time.Instant;
 import java.util.UUID;
 
 public class Payment {
-    private UUID id;
-    private UUID customerId;
-    private long amount;
-    private Currency currency;
+    private final UUID id;
+    private final UUID customerId;
+    private final long amount;
+    private final Currency currency;
     private PaymentStatus status;
-    private String idempotencyKey;
-    private Instant createdAt;
+    private final String idempotencyKey;
+    private final Instant createdAt;
+    private final Long version;
 
     public Payment(
             UUID id,
@@ -22,7 +23,7 @@ public class Payment {
             String idempotencyKey,
             Instant createdAt
     ) {
-        this(id, customerId, amount, currency, PaymentStatus.PENDING, idempotencyKey, createdAt);
+        this(id, customerId, amount, currency, PaymentStatus.PENDING, idempotencyKey, createdAt, null);
     }
 
     private Payment(
@@ -32,7 +33,8 @@ public class Payment {
             Currency currency,
             PaymentStatus status,
             String idempotencyKey,
-            Instant createdAt
+            Instant createdAt,
+            Long version
     ) {
         if (id == null) {
             throw new InvalidPaymentException("Payment ID cannot be null");
@@ -63,6 +65,7 @@ public class Payment {
         this.status = status;
         this.idempotencyKey = idempotencyKey;
         this.createdAt = createdAt;
+        this.version = version;
     }
 
     public static Payment reconstitute(
@@ -72,9 +75,13 @@ public class Payment {
             Currency currency,
             PaymentStatus status,
             String idempotencyKey,
-            Instant createdAt
+            Instant createdAt,
+            Long version
     ) {
-        return new Payment(id, customerId, amount, currency, status, idempotencyKey, createdAt);
+        if (version == null) {
+            throw new InvalidPaymentException("Persisted payment must have a version");
+        }
+        return new Payment(id, customerId, amount, currency, status, idempotencyKey, createdAt, version);
     }
 
     public void approve() {
@@ -126,5 +133,9 @@ public class Payment {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Long getVersion() {
+        return version;
     }
 }

@@ -8,6 +8,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -19,6 +20,10 @@ public class PaymentEntity {
     @Id
     @Column(name = "id", nullable = false, updatable = false)
     private UUID id;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
 
     @Column(name = "customer_id", nullable = false, updatable = false)
     private UUID customerId;
@@ -50,7 +55,8 @@ public class PaymentEntity {
             Currency currency,
             PaymentStatus status,
             String idempotencyKey,
-            Instant createdAt
+            Instant createdAt,
+            Long version
     ) {
         this.id = id;
         this.customerId = customerId;
@@ -59,10 +65,15 @@ public class PaymentEntity {
         this.status = status;
         this.idempotencyKey = idempotencyKey;
         this.createdAt = createdAt;
+        this.version = version;
     }
 
     public UUID getId() {
         return id;
+    }
+
+    public Long getVersion() {
+        return version;
     }
 
     public UUID getCustomerId() {

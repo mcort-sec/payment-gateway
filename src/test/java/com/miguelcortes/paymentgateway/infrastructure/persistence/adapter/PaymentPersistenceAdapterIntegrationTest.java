@@ -21,6 +21,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -65,38 +66,44 @@ class PaymentPersistenceAdapterIntegrationTest {
         assertEquals(PaymentStatus.PENDING, savedById.getStatus());
         assertEquals(idempotencyKey, savedById.getIdempotencyKey());
         assertEquals(createdAt, savedById.getCreatedAt());
+        assertEquals(0L, savedById.getVersion());
 
         Optional<Payment> byCustomerAndKey = adapter.findByCustomerIdAndIdempotencyKey(customerId, idempotencyKey);
         assertTrue(byCustomerAndKey.isPresent());
         Payment savedByKey = byCustomerAndKey.get();
         assertEquals(id, savedByKey.getId());
         assertEquals(PaymentStatus.PENDING, savedByKey.getStatus());
+        assertEquals(0L, savedByKey.getVersion());
     }
 
     @Test
-    void shouldSaveAndRetrievePaymentWithApprovedStatus() {
+    void shouldIncrementVersionWhenUpdatingExistingPaymentState() {
         UUID id = UUID.randomUUID();
         UUID customerId = UUID.randomUUID();
-        String idempotencyKey = "req-it-002";
+        String idempotencyKey = "req-it-version-inc";
         Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
 
-        Payment approvedPayment = Payment.reconstitute(
+        Payment newPayment = new Payment(
                 id,
                 customerId,
                 50000L,
                 Currency.USD,
-                PaymentStatus.APPROVED,
                 idempotencyKey,
                 createdAt
         );
 
-        adapter.save(approvedPayment);
+        adapter.save(newPayment);
 
-        Optional<Payment> retrieved = adapter.findById(id);
-        assertTrue(retrieved.isPresent());
-        assertEquals(PaymentStatus.APPROVED, retrieved.get().getStatus());
-        assertEquals(50000L, retrieved.get().getAmount());
-        assertEquals(Currency.USD, retrieved.get().getCurrency());
+        Payment retrievedV0 = adapter.findById(id).orElseThrow();
+        assertEquals(PaymentStatus.PENDING, retrievedV0.getStatus());
+        assertEquals(0L, retrievedV0.getVersion());
+
+        retrievedV0.approve();
+        adapter.save(retrievedV0);
+
+        Payment retrievedV1 = adapter.findById(id).orElseThrow();
+        assertEquals(PaymentStatus.APPROVED, retrievedV1.getStatus());
+        assertEquals(1L, retrievedV1.getVersion());
     }
 
     @Test

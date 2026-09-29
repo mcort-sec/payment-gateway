@@ -23,7 +23,34 @@ class PaymentMapperTest {
     }
 
     @Test
-    void shouldMapPaymentToPaymentEntityPreservingAllFieldsAndApprovedStatus() {
+    void shouldMapNewPaymentWithNullVersionToEntityWithNullVersion() {
+        UUID id = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+        Instant createdAt = Instant.now();
+
+        Payment newPayment = new Payment(
+                id,
+                customerId,
+                100000L,
+                Currency.COP,
+                "req-new-map",
+                createdAt
+        );
+
+        PaymentEntity entity = mapper.toEntity(newPayment);
+
+        assertEquals(id, entity.getId());
+        assertEquals(customerId, entity.getCustomerId());
+        assertEquals(100000L, entity.getAmount());
+        assertEquals(Currency.COP, entity.getCurrency());
+        assertEquals(PaymentStatus.PENDING, entity.getStatus());
+        assertEquals("req-new-map", entity.getIdempotencyKey());
+        assertEquals(createdAt, entity.getCreatedAt());
+        assertNull(entity.getVersion());
+    }
+
+    @Test
+    void shouldMapReconstitutedPaymentWithVersionToPaymentEntityPreservingAllFields() {
         UUID id = UUID.randomUUID();
         UUID customerId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-09-28T14:30:00Z");
@@ -35,7 +62,8 @@ class PaymentMapperTest {
                 Currency.COP,
                 PaymentStatus.APPROVED,
                 "req-map-1",
-                createdAt
+                createdAt,
+                3L
         );
 
         PaymentEntity entity = mapper.toEntity(payment);
@@ -47,10 +75,11 @@ class PaymentMapperTest {
         assertEquals(PaymentStatus.APPROVED, entity.getStatus());
         assertEquals("req-map-1", entity.getIdempotencyKey());
         assertEquals(createdAt, entity.getCreatedAt());
+        assertEquals(3L, entity.getVersion());
     }
 
     @Test
-    void shouldMapPaymentEntityToPaymentPreservingAllFieldsAndApprovedStatus() {
+    void shouldMapPaymentEntityWithVersionToPaymentPreservingAllFields() {
         UUID id = UUID.randomUUID();
         UUID customerId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-09-28T15:00:00Z");
@@ -62,7 +91,8 @@ class PaymentMapperTest {
                 Currency.USD,
                 PaymentStatus.APPROVED,
                 "req-map-2",
-                createdAt
+                createdAt,
+                4L
         );
 
         Payment payment = mapper.toDomain(entity);
@@ -74,10 +104,11 @@ class PaymentMapperTest {
         assertEquals(PaymentStatus.APPROVED, payment.getStatus());
         assertEquals("req-map-2", payment.getIdempotencyKey());
         assertEquals(createdAt, payment.getCreatedAt());
+        assertEquals(4L, payment.getVersion());
     }
 
     @Test
-    void shouldPerformRoundTripMappingWithoutLossOfInformationForDeclinedStatus() {
+    void shouldPerformRoundTripMappingWithoutLossOfInformationForDeclinedStatusAndVersion() {
         UUID id = UUID.randomUUID();
         UUID customerId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-09-28T16:00:00Z");
@@ -89,7 +120,8 @@ class PaymentMapperTest {
                 Currency.COP,
                 PaymentStatus.DECLINED,
                 "req-map-3",
-                createdAt
+                createdAt,
+                5L
         );
 
         PaymentEntity intermediateEntity = mapper.toEntity(originalPayment);
@@ -102,6 +134,7 @@ class PaymentMapperTest {
         assertEquals(originalPayment.getStatus(), roundTripPayment.getStatus());
         assertEquals(originalPayment.getIdempotencyKey(), roundTripPayment.getIdempotencyKey());
         assertEquals(originalPayment.getCreatedAt(), roundTripPayment.getCreatedAt());
+        assertEquals(originalPayment.getVersion(), roundTripPayment.getVersion());
     }
 
     @Test

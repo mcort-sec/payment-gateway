@@ -18,7 +18,8 @@ public class PaymentMapper {
                 domain.getCurrency(),
                 domain.getStatus(),
                 domain.getIdempotencyKey(),
-                domain.getCreatedAt()
+                domain.getCreatedAt(),
+                domain.getVersion()
         );
     }
 
@@ -33,7 +34,8 @@ public class PaymentMapper {
                 entity.getCurrency(),
                 entity.getStatus(),
                 entity.getIdempotencyKey(),
-                entity.getCreatedAt()
+                entity.getCreatedAt(),
+                entity.getVersion()
         );
     }
 }

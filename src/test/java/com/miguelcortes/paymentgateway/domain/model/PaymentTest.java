@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class PaymentTest {
@@ -30,6 +31,7 @@ class PaymentTest {
         assertEquals(PaymentStatus.PENDING, payment.getStatus());
         assertEquals(idempotencyKey, payment.getIdempotencyKey());
         assertEquals(createdAt, payment.getCreatedAt());
+        assertNull(payment.getVersion());
     }
 
     @Test
@@ -252,7 +254,7 @@ class PaymentTest {
     }
 
     @Test
-    void shouldReconstitutePaymentWithApprovedStatus() {
+    void shouldReconstitutePaymentWithApprovedStatusAndVersion() {
         UUID id = UUID.randomUUID();
         UUID customerId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-09-28T08:00:00Z");
@@ -264,7 +266,8 @@ class PaymentTest {
                 Currency.COP,
                 PaymentStatus.APPROVED,
                 "req-reconstitute-1",
-                createdAt
+                createdAt,
+                0L
         );
 
         assertEquals(id, payment.getId());
@@ -274,6 +277,7 @@ class PaymentTest {
         assertEquals(PaymentStatus.APPROVED, payment.getStatus());
         assertEquals("req-reconstitute-1", payment.getIdempotencyKey());
         assertEquals(createdAt, payment.getCreatedAt());
+        assertEquals(0L, payment.getVersion());
     }
 
     @Test
@@ -285,10 +289,12 @@ class PaymentTest {
                 Currency.USD,
                 PaymentStatus.DECLINED,
                 "req-reconstitute-2",
-                Instant.now()
+                Instant.now(),
+                1L
         );
 
         assertEquals(PaymentStatus.DECLINED, payment.getStatus());
+        assertEquals(1L, payment.getVersion());
     }
 
     @Test
@@ -300,10 +306,12 @@ class PaymentTest {
                 Currency.COP,
                 PaymentStatus.CANCELLED,
                 "req-reconstitute-3",
-                Instant.now()
+                Instant.now(),
+                2L
         );
 
         assertEquals(PaymentStatus.CANCELLED, payment.getStatus());
+        assertEquals(2L, payment.getVersion());
     }
 
     @Test
@@ -317,11 +325,31 @@ class PaymentTest {
                         Currency.USD,
                         null,
                         "key-1",
-                        Instant.now()
+                        Instant.now(),
+                        0L
                 )
         );
 
         assertEquals("Payment status cannot be null", exception.getMessage());
+    }
+
+    @Test
+    void shouldThrowExceptionWhenReconstitutingWithNullVersion() {
+        InvalidPaymentException exception = assertThrows(
+                InvalidPaymentException.class,
+                () -> Payment.reconstitute(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        1000L,
+                        Currency.USD,
+                        PaymentStatus.PENDING,
+                        "key-1",
+                        Instant.now(),
+                        null
+                )
+        );
+
+        assertEquals("Persisted payment must have a version", exception.getMessage());
     }
 
     private Payment createValidPayment() {

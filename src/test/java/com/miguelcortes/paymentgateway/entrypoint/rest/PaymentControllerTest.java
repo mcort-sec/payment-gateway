@@ -2,6 +2,7 @@ package com.miguelcortes.paymentgateway.entrypoint.rest;
 
 import com.miguelcortes.paymentgateway.application.command.CreatePaymentCommand;
 import com.miguelcortes.paymentgateway.application.exception.IdempotencyConflictException;
+import com.miguelcortes.paymentgateway.application.exception.PaymentConcurrentModificationException;
 import com.miguelcortes.paymentgateway.application.exception.PaymentNotFoundException;
 import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CancelPaymentUseCase;
@@ -74,7 +75,8 @@ class PaymentControllerTest {
                 Currency.COP,
                 PaymentStatus.PENDING,
                 idempotencyKey,
-                createdAt
+                createdAt,
+                0L
         );
 
         when(createPaymentUseCase.execute(any(CreatePaymentCommand.class))).thenReturn(mockPayment);
@@ -349,7 +351,8 @@ class PaymentControllerTest {
                 Currency.COP,
                 PaymentStatus.PENDING,
                 "key-get-1",
-                createdAt
+                createdAt,
+                0L
         );
 
         when(getPaymentUseCase.execute(paymentId)).thenReturn(mockPayment);
@@ -413,7 +416,8 @@ class PaymentControllerTest {
                 Currency.COP,
                 PaymentStatus.APPROVED,
                 "key-approve-1",
-                createdAt
+                createdAt,
+                0L
         );
 
         when(approvePaymentUseCase.execute(paymentId)).thenReturn(approvedPayment);
@@ -496,7 +500,8 @@ class PaymentControllerTest {
                 Currency.COP,
                 PaymentStatus.DECLINED,
                 "key-decline-1",
-                createdAt
+                createdAt,
+                0L
         );
 
         when(declinePaymentUseCase.execute(paymentId)).thenReturn(declinedPayment);
@@ -579,7 +584,8 @@ class PaymentControllerTest {
                 Currency.COP,
                 PaymentStatus.CANCELLED,
                 "key-cancel-1",
-                createdAt
+                createdAt,
+                0L
         );
 
         when(cancelPaymentUseCase.execute(paymentId)).thenReturn(cancelledPayment);
@@ -646,5 +652,26 @@ class PaymentControllerTest {
                 .andExpect(jsonPath("$.timestamp").value(notNullValue()));
 
         verifyNoInteractions(cancelPaymentUseCase);
+    }
+
+    @Test
+    @DisplayName("Should return 409 Conflict when use case throws PaymentConcurrentModificationException")
+    void shouldReturn409WhenUseCaseThrowsPaymentConcurrentModificationException() throws Exception {
+        UUID paymentId = UUID.randomUUID();
+
+        when(approvePaymentUseCase.execute(paymentId))
+                .thenThrow(new PaymentConcurrentModificationException(
+                        "Payment with id " + paymentId + " was modified concurrently by another transaction"
+                ));
+
+        mockMvc.perform(post("/payments/{id}/approve", paymentId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message").value("Payment with id " + paymentId + " was modified concurrently by another transaction"))
+                .andExpect(jsonPath("$.path").value("/payments/" + paymentId + "/approve"))
+                .andExpect(jsonPath("$.timestamp").value(notNullValue()));
+
+        verify(approvePaymentUseCase).execute(paymentId);
     }
 }

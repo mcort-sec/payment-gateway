@@ -78,7 +78,8 @@ class ApprovePaymentUseCaseTest {
                 Currency.COP,
                 PaymentStatus.APPROVED,
                 "key-2",
-                Instant.now()
+                Instant.now(),
+                0L
         );
         repository.save(payment);
         repository.resetSaveCounter();
@@ -102,7 +103,8 @@ class ApprovePaymentUseCaseTest {
                 Currency.COP,
                 PaymentStatus.DECLINED,
                 "key-3",
-                Instant.now()
+                Instant.now(),
+                0L
         );
         repository.save(payment);
         repository.resetSaveCounter();
@@ -126,7 +128,8 @@ class ApprovePaymentUseCaseTest {
                 Currency.COP,
                 PaymentStatus.CANCELLED,
                 "key-4",
-                Instant.now()
+                Instant.now(),
+                0L
         );
         repository.save(payment);
         repository.resetSaveCounter();
