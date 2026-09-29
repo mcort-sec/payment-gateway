@@ -3,9 +3,11 @@ package com.miguelcortes.paymentgateway.entrypoint.rest;
 import com.miguelcortes.paymentgateway.application.command.CreatePaymentCommand;
 import com.miguelcortes.paymentgateway.application.exception.IdempotencyConflictException;
 import com.miguelcortes.paymentgateway.application.exception.PaymentNotFoundException;
+import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreatePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.GetPaymentUseCase;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentException;
+import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentStateException;
 import com.miguelcortes.paymentgateway.domain.model.Currency;
 import com.miguelcortes.paymentgateway.domain.model.Payment;
 import com.miguelcortes.paymentgateway.domain.model.PaymentStatus;
@@ -45,6 +47,9 @@ class PaymentControllerTest {
 
     @MockitoBean
     private GetPaymentUseCase getPaymentUseCase;
+
+    @MockitoBean
+    private ApprovePaymentUseCase approvePaymentUseCase;
 
     @Test
     @DisplayName("Should create payment successfully and return 201 with Location header and body")
@@ -384,5 +389,88 @@ class PaymentControllerTest {
                 .andExpect(jsonPath("$.timestamp").value(notNullValue()));
 
         verifyNoInteractions(getPaymentUseCase);
+    }
+
+    @Test
+    @DisplayName("Should return 200 OK and APPROVED status when approving payment successfully")
+    void shouldReturn200WhenApprovingPaymentSuccessfully() throws Exception {
+        UUID paymentId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-09-28T21:00:00Z");
+
+        Payment approvedPayment = Payment.reconstitute(
+                paymentId,
+                customerId,
+                50000L,
+                Currency.COP,
+                PaymentStatus.APPROVED,
+                "key-approve-1",
+                createdAt
+        );
+
+        when(approvePaymentUseCase.execute(paymentId)).thenReturn(approvedPayment);
+
+        mockMvc.perform(post("/payments/{id}/approve", paymentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(paymentId.toString()))
+                .andExpect(jsonPath("$.customerId").value(customerId.toString()))
+                .andExpect(jsonPath("$.amount").value(50000))
+                .andExpect(jsonPath("$.currency").value("COP"))
+                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.createdAt").value("2026-09-28T21:00:00Z"));
+
+        verify(approvePaymentUseCase).execute(paymentId);
+    }
+
+    @Test
+    @DisplayName("Should return 404 Not Found when approving non-existent payment")
+    void shouldReturn404WhenApprovingNonExistentPayment() throws Exception {
+        UUID nonExistentId = UUID.randomUUID();
+
+        when(approvePaymentUseCase.execute(nonExistentId))
+                .thenThrow(new PaymentNotFoundException(nonExistentId));
+
+        mockMvc.perform(post("/payments/{id}/approve", nonExistentId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.message").value("Payment not found with id: " + nonExistentId))
+                .andExpect(jsonPath("$.path").value("/payments/" + nonExistentId + "/approve"))
+                .andExpect(jsonPath("$.timestamp").value(notNullValue()));
+
+        verify(approvePaymentUseCase).execute(nonExistentId);
+    }
+
+    @Test
+    @DisplayName("Should return 409 Conflict when approving payment with invalid state")
+    void shouldReturn409WhenApprovingPaymentWithInvalidState() throws Exception {
+        UUID paymentId = UUID.randomUUID();
+
+        when(approvePaymentUseCase.execute(paymentId))
+                .thenThrow(new InvalidPaymentStateException("Cannot approve payment with status APPROVED"));
+
+        mockMvc.perform(post("/payments/{id}/approve", paymentId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message").value("Cannot approve payment with status APPROVED"))
+                .andExpect(jsonPath("$.path").value("/payments/" + paymentId + "/approve"))
+                .andExpect(jsonPath("$.timestamp").value(notNullValue()));
+
+        verify(approvePaymentUseCase).execute(paymentId);
+    }
+
+    @Test
+    @DisplayName("Should return 400 Bad Request when approving payment with invalid UUID format")
+    void shouldReturn400WhenApprovingPaymentWithInvalidUuidFormat() throws Exception {
+        mockMvc.perform(post("/payments/{id}/approve", "invalid-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value(notNullValue()))
+                .andExpect(jsonPath("$.path").value("/payments/invalid-uuid/approve"))
+                .andExpect(jsonPath("$.timestamp").value(notNullValue()));
+
+        verifyNoInteractions(approvePaymentUseCase);
     }
 }

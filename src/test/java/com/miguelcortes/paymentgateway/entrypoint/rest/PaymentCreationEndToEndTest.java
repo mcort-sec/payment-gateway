@@ -252,4 +252,62 @@ class PaymentCreationEndToEndTest {
         assertThat(entity.get().getCustomerId()).isEqualTo(customerId);
         assertThat(entity.get().getAmount()).isEqualTo(amount);
     }
+
+    @Test
+    @DisplayName("5. Approve payment flow: POST /payments -> POST /payments/{id}/approve -> GET /payments/{id} and subsequent approval conflict")
+    void shouldApprovePaymentAndPreventSubsequentApprovalTransitions() throws Exception {
+        UUID customerId = UUID.randomUUID();
+        String idempotencyKey = "e2e-approve-key-1";
+        long amount = 150000L;
+        Currency currency = Currency.COP;
+
+        String requestJson = """
+                {
+                    "customerId": "%s",
+                    "amount": %d,
+                    "currency": "%s"
+                }
+                """.formatted(customerId, amount, currency);
+
+        // 1. POST /payments -> Creates PENDING payment
+        MvcResult createResult = mockMvc.perform(post("/payments")
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andReturn();
+
+        UUID paymentId = UUID.fromString(JsonPath.read(createResult.getResponse().getContentAsString(), "$.id"));
+
+        // 2. POST /payments/{id}/approve -> Returns APPROVED
+        mockMvc.perform(post("/payments/{id}/approve", paymentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(paymentId.toString()))
+                .andExpect(jsonPath("$.status").value("APPROVED"));
+
+        // 3. GET /payments/{id} -> Returns APPROVED
+        mockMvc.perform(get("/payments/{id}", paymentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(paymentId.toString()))
+                .andExpect(jsonPath("$.status").value("APPROVED"));
+
+        // 4. Verify in PostgreSQL directly
+        Optional<PaymentEntity> entity = paymentRepository.findById(paymentId);
+        assertThat(entity).isPresent();
+        assertThat(entity.get().getStatus()).isEqualTo(PaymentStatus.APPROVED);
+
+        // 5. Subsequent POST /payments/{id}/approve -> Returns 409 Conflict
+        mockMvc.perform(post("/payments/{id}/approve", paymentId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message").value("Cannot approve payment with status APPROVED"))
+                .andExpect(jsonPath("$.path").value("/payments/" + paymentId + "/approve"));
+
+        // 6. Verify in PostgreSQL that status remains APPROVED
+        Optional<PaymentEntity> entityAfterConflict = paymentRepository.findById(paymentId);
+        assertThat(entityAfterConflict).isPresent();
+        assertThat(entityAfterConflict.get().getStatus()).isEqualTo(PaymentStatus.APPROVED);
+    }
 }

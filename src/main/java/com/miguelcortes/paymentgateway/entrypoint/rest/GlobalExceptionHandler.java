@@ -3,6 +3,7 @@ package com.miguelcortes.paymentgateway.entrypoint.rest;
 import com.miguelcortes.paymentgateway.application.exception.IdempotencyConflictException;
 import com.miguelcortes.paymentgateway.application.exception.PaymentNotFoundException;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentException;
+import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentStateException;
 import com.miguelcortes.paymentgateway.entrypoint.rest.dto.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -32,6 +33,20 @@ public class GlobalExceptionHandler {
                 request.getRequestURI()
         );
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+    }
+
+    @ExceptionHandler(InvalidPaymentStateException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidPaymentState(
+            InvalidPaymentStateException ex,
+            HttpServletRequest request
+    ) {
+        ErrorResponse error = ErrorResponse.of(
+                HttpStatus.CONFLICT.value(),
+                HttpStatus.CONFLICT.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
     }
 
     @ExceptionHandler(IdempotencyConflictException.class)

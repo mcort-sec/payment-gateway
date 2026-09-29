@@ -3,6 +3,7 @@ package com.miguelcortes.paymentgateway.infrastructure.config;
 import com.miguelcortes.paymentgateway.application.port.out.IdGenerator;
 import com.miguelcortes.paymentgateway.application.port.out.PaymentRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.TimeProvider;
+import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreatePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.GetPaymentUseCase;
 import org.springframework.context.annotation.Bean;
@@ -23,5 +24,10 @@ public class ApplicationConfig {
     @Bean
     public GetPaymentUseCase getPaymentUseCase(PaymentRepositoryPort paymentRepositoryPort) {
         return new GetPaymentUseCase(paymentRepositoryPort);
+    }
+
+    @Bean
+    public ApprovePaymentUseCase approvePaymentUseCase(PaymentRepositoryPort paymentRepositoryPort) {
+        return new ApprovePaymentUseCase(paymentRepositoryPort);
     }
 }

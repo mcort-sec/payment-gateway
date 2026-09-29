@@ -1,6 +1,7 @@
 package com.miguelcortes.paymentgateway.entrypoint.rest;
 
 import com.miguelcortes.paymentgateway.application.command.CreatePaymentCommand;
+import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreatePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.GetPaymentUseCase;
 import com.miguelcortes.paymentgateway.domain.model.Payment;
@@ -30,13 +31,16 @@ public class PaymentController {
 
     private final CreatePaymentUseCase createPaymentUseCase;
     private final GetPaymentUseCase getPaymentUseCase;
+    private final ApprovePaymentUseCase approvePaymentUseCase;
 
     public PaymentController(
             CreatePaymentUseCase createPaymentUseCase,
-            GetPaymentUseCase getPaymentUseCase
+            GetPaymentUseCase getPaymentUseCase,
+            ApprovePaymentUseCase approvePaymentUseCase
     ) {
         this.createPaymentUseCase = createPaymentUseCase;
         this.getPaymentUseCase = getPaymentUseCase;
+        this.approvePaymentUseCase = approvePaymentUseCase;
     }
 
     @PostMapping
@@ -68,6 +72,12 @@ public class PaymentController {
     @GetMapping("/{id}")
     public ResponseEntity<PaymentResponse> getPayment(@PathVariable UUID id) {
         Payment payment = getPaymentUseCase.execute(id);
+        return ResponseEntity.ok(PaymentResponse.fromDomain(payment));
+    }
+
+    @PostMapping("/{id}/approve")
+    public ResponseEntity<PaymentResponse> approvePayment(@PathVariable UUID id) {
+        Payment payment = approvePaymentUseCase.execute(id);
         return ResponseEntity.ok(PaymentResponse.fromDomain(payment));
     }
 }
