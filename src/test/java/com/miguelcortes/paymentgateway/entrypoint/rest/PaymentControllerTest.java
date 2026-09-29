@@ -15,6 +15,7 @@ import com.miguelcortes.paymentgateway.application.usecase.CancelPaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreatePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.DeclinePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.GetPaymentUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.ListPaymentsUseCase;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentException;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentStateException;
 import com.miguelcortes.paymentgateway.domain.model.Currency;
@@ -27,6 +28,8 @@ import com.miguelcortes.paymentgateway.infrastructure.security.ApiKeyParser;
 import com.miguelcortes.paymentgateway.infrastructure.security.MerchantPrincipal;
 import com.miguelcortes.paymentgateway.infrastructure.security.ProcessorPrincipal;
 import com.miguelcortes.paymentgateway.infrastructure.security.SecurityConfig;
+import com.miguelcortes.paymentgateway.application.pagination.PageQuery;
+import com.miguelcortes.paymentgateway.application.pagination.PageResult;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +41,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.endsWith;
@@ -71,6 +75,9 @@ class PaymentControllerTest {
 
     @MockitoBean
     private GetPaymentUseCase getPaymentUseCase;
+
+    @MockitoBean
+    private ListPaymentsUseCase listPaymentsUseCase;
 
     @MockitoBean
     private ApprovePaymentUseCase approvePaymentUseCase;
@@ -889,5 +896,108 @@ class PaymentControllerTest {
                 .andExpect(jsonPath("$.message").value("Merchant is suspended: " + merchantId))
                 .andExpect(jsonPath("$.path").value("/payments"))
                 .andExpect(jsonPath("$.timestamp").value(notNullValue()));
+    }
+
+    @Test
+    @DisplayName("Should return 200 and paged payments for authenticated merchant")
+    void shouldReturn200AndPagedPayments() throws Exception {
+        UUID merchantId = UUID.randomUUID();
+        Payment payment = new Payment(
+                UUID.randomUUID(),
+                merchantId,
+                10000L,
+                Currency.COP,
+                "key-1",
+                Instant.now()
+        );
+        PageResult<Payment> pageResult = new PageResult<>(
+                List.of(payment),
+                0,
+                20,
+                1L,
+                1
+        );
+
+        when(listPaymentsUseCase.execute(merchantId, new PageQuery(0, 20)))
+                .thenReturn(pageResult);
+
+        mockMvc.perform(get("/payments")
+                        .with(authenticatedMerchant(merchantId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(payment.getId().toString()))
+                .andExpect(jsonPath("$.content[0].merchantId").value(merchantId.toString()))
+                .andExpect(jsonPath("$.content[0].amount").value(10000))
+                .andExpect(jsonPath("$.content[0].currency").value("COP"))
+                .andExpect(jsonPath("$.content[0].status").value("PENDING"))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1));
+    }
+
+    @Test
+    @DisplayName("Should return 400 Bad Request when page is negative")
+    void shouldReturn400WhenPageIsNegative() throws Exception {
+        UUID merchantId = UUID.randomUUID();
+
+        mockMvc.perform(get("/payments")
+                        .with(authenticatedMerchant(merchantId))
+                        .param("page", "-1")
+                        .param("size", "20"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value("Page index must not be negative"))
+                .andExpect(jsonPath("$.path").value("/payments"));
+    }
+
+    @Test
+    @DisplayName("Should return 400 Bad Request when size is zero")
+    void shouldReturn400WhenSizeIsZero() throws Exception {
+        UUID merchantId = UUID.randomUUID();
+
+        mockMvc.perform(get("/payments")
+                        .with(authenticatedMerchant(merchantId))
+                        .param("page", "0")
+                        .param("size", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value("Page size must be between 1 and 100"))
+                .andExpect(jsonPath("$.path").value("/payments"));
+    }
+
+    @Test
+    @DisplayName("Should return 400 Bad Request when size exceeds max (100)")
+    void shouldReturn400WhenSizeExceedsMax() throws Exception {
+        UUID merchantId = UUID.randomUUID();
+
+        mockMvc.perform(get("/payments")
+                        .with(authenticatedMerchant(merchantId))
+                        .param("page", "0")
+                        .param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value("Page size must be between 1 and 100"))
+                .andExpect(jsonPath("$.path").value("/payments"));
+    }
+
+    @Test
+    @DisplayName("Should return 403 Forbidden when processor attempts to list payments")
+    void shouldReturn403WhenProcessorAttemptsToListPayments() throws Exception {
+        UUID processorId = UUID.randomUUID();
+
+        mockMvc.perform(get("/payments")
+                        .with(authenticatedProcessor(processorId)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Should return 401 Unauthorized when unauthenticated client attempts to list payments")
+    void shouldReturn401WhenUnauthenticatedToListPayments() throws Exception {
+        mockMvc.perform(get("/payments"))
+                .andExpect(status().isUnauthorized());
     }
 }

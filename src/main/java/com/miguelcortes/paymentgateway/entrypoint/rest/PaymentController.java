@@ -1,13 +1,17 @@
 package com.miguelcortes.paymentgateway.entrypoint.rest;
 
 import com.miguelcortes.paymentgateway.application.command.CreatePaymentCommand;
+import com.miguelcortes.paymentgateway.application.pagination.PageQuery;
+import com.miguelcortes.paymentgateway.application.pagination.PageResult;
 import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CancelPaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreatePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.DeclinePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.GetPaymentUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.ListPaymentsUseCase;
 import com.miguelcortes.paymentgateway.domain.model.Payment;
 import com.miguelcortes.paymentgateway.entrypoint.rest.dto.CreatePaymentRequest;
+import com.miguelcortes.paymentgateway.entrypoint.rest.dto.PagedResponse;
 import com.miguelcortes.paymentgateway.entrypoint.rest.dto.PaymentResponse;
 import com.miguelcortes.paymentgateway.infrastructure.security.MerchantPrincipal;
 import com.miguelcortes.paymentgateway.infrastructure.security.ProcessorPrincipal;
@@ -23,6 +27,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -36,6 +41,7 @@ public class PaymentController {
 
     private final CreatePaymentUseCase createPaymentUseCase;
     private final GetPaymentUseCase getPaymentUseCase;
+    private final ListPaymentsUseCase listPaymentsUseCase;
     private final ApprovePaymentUseCase approvePaymentUseCase;
     private final DeclinePaymentUseCase declinePaymentUseCase;
     private final CancelPaymentUseCase cancelPaymentUseCase;
@@ -43,15 +49,28 @@ public class PaymentController {
     public PaymentController(
             CreatePaymentUseCase createPaymentUseCase,
             GetPaymentUseCase getPaymentUseCase,
+            ListPaymentsUseCase listPaymentsUseCase,
             ApprovePaymentUseCase approvePaymentUseCase,
             DeclinePaymentUseCase declinePaymentUseCase,
             CancelPaymentUseCase cancelPaymentUseCase
     ) {
         this.createPaymentUseCase = createPaymentUseCase;
         this.getPaymentUseCase = getPaymentUseCase;
+        this.listPaymentsUseCase = listPaymentsUseCase;
         this.approvePaymentUseCase = approvePaymentUseCase;
         this.declinePaymentUseCase = declinePaymentUseCase;
         this.cancelPaymentUseCase = cancelPaymentUseCase;
+    }
+
+    @GetMapping
+    public ResponseEntity<PagedResponse<PaymentResponse>> listPayments(
+            @AuthenticationPrincipal MerchantPrincipal principal,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        PageQuery pageQuery = new PageQuery(page, size);
+        PageResult<Payment> result = listPaymentsUseCase.execute(principal.merchantId(), pageQuery);
+        return ResponseEntity.ok(PagedResponse.from(result, PaymentResponse::fromDomain));
     }
 
     @PostMapping

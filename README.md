@@ -165,9 +165,11 @@ Authorization: Bearer <API_KEY>
 | Method | Path | Principal Role | Idempotency | Success Status | Description |
 |---|---|---|---|---|---|
 | `POST` | `/payments` | `Merchant` | **Required** | `201 Created` | Authorize / initiate a new payment |
+| `GET` | `/payments` | `Merchant` | N/A | `200 OK` | List payment transaction history (Paginated, Tenant-scoped) |
 | `GET` | `/payments/{id}` | `Merchant` | N/A | `200 OK` | Fetch payment details by ID (Tenant-scoped) |
 | `POST` | `/payments/{id}/cancel` | `Merchant` | N/A | `200 OK` | Cancel a pending payment |
 | `POST` | `/payments/{paymentId}/refunds` | `Merchant` | **Required** | `201 Created` | Request a refund on an approved payment |
+| `GET` | `/refunds` | `Merchant` | N/A | `200 OK` | List refund transaction history (Paginated, Tenant-scoped) |
 | `GET` | `/refunds/{id}` | `Merchant` | N/A | `200 OK` | Fetch refund details by ID (Tenant-scoped) |
 | `POST` | `/payments/{id}/approve` | `Processor` | N/A | `200 OK` | Processor callback to approve a payment |
 | `POST` | `/payments/{id}/decline` | `Processor` | N/A | `200 OK` | Processor callback to decline a payment |
@@ -222,7 +224,45 @@ Initiates a new payment transaction. Requires an `Idempotency-Key` header.
 
 ---
 
-#### 2. Get Payment
+#### 2. List Payments
+Lists paginated payment history for the authenticated merchant.
+
+- **URL**: `GET /payments`
+- **Query Parameters**:
+  - `page` *(optional integer, default: `0`, min: `0`)*: Zero-based page index.
+  - `size` *(optional integer, default: `20`, min: `1`, max: `100`)*: Number of records per page.
+- **Tenant Scoping**: Automatically scoped to the authenticated merchant identified by the API key (the `merchantId` parameter is not accepted).
+- **Merchant Status**: Permitted for active and suspended merchants.
+- **Ordering**: Deterministic ordering by `createdAt DESC` with `id DESC` as tie-breaker.
+- **Offset Pagination Semantics**: Uses page/size offset pagination. Under concurrent write traffic, offset pagination does not represent a static global snapshot.
+- **cURL Example**:
+  ```bash
+  curl -i -X GET "http://localhost:8080/payments?page=0&size=20" \
+    -H "Authorization: Bearer pg_test_aB3dE5gH7jK9_u8v9w0x1y2z3A4B5C6D7E8F9G0H1I2J3K4L5M6N7O8"
+  ```
+- **Response (`200 OK`)**:
+  ```json
+  {
+    "content": [
+      {
+        "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        "merchantId": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+        "amount": 5000,
+        "currency": "USD",
+        "status": "APPROVED",
+        "createdAt": "2026-09-29T18:00:00Z"
+      }
+    ],
+    "page": 0,
+    "size": 20,
+    "totalElements": 1,
+    "totalPages": 1
+  }
+  ```
+
+---
+
+#### 3. Get Payment
 Retrieves payment status by ID. Returns `404 Not Found` if the payment does not exist or belongs to another merchant.
 
 - **URL**: `GET /payments/{id}`
@@ -245,7 +285,7 @@ Retrieves payment status by ID. Returns `404 Not Found` if the payment does not 
 
 ---
 
-#### 3. Cancel Payment
+#### 4. Cancel Payment
 Cancels a payment that is currently in `PENDING` status.
 
 - **URL**: `POST /payments/{id}/cancel`
@@ -268,7 +308,7 @@ Cancels a payment that is currently in `PENDING` status.
 
 ---
 
-#### 4. Create Refund
+#### 5. Create Refund
 Requests a refund on an `APPROVED` payment. Requires `Idempotency-Key`.
 
 - **URL**: `POST /payments/{paymentId}/refunds`
@@ -311,7 +351,46 @@ Requests a refund on an `APPROVED` payment. Requires `Idempotency-Key`.
 
 ---
 
-#### 5. Get Refund
+#### 6. List Refunds
+Lists paginated refund history for the authenticated merchant.
+
+- **URL**: `GET /refunds`
+- **Query Parameters**:
+  - `page` *(optional integer, default: `0`, min: `0`)*: Zero-based page index.
+  - `size` *(optional integer, default: `20`, min: `1`, max: `100`)*: Number of records per page.
+- **Tenant Scoping**: Automatically scoped to the authenticated merchant identified by the API key (the `merchantId` parameter is not accepted).
+- **Merchant Status**: Permitted for active and suspended merchants.
+- **Ordering**: Deterministic ordering by `createdAt DESC` with `id DESC` as tie-breaker.
+- **Offset Pagination Semantics**: Uses page/size offset pagination. Under concurrent write traffic, offset pagination does not represent a static global snapshot.
+- **cURL Example**:
+  ```bash
+  curl -i -X GET "http://localhost:8080/refunds?page=0&size=20" \
+    -H "Authorization: Bearer pg_test_aB3dE5gH7jK9_u8v9w0x1y2z3A4B5C6D7E8F9G0H1I2J3K4L5M6N7O8"
+  ```
+- **Response (`200 OK`)**:
+  ```json
+  {
+    "content": [
+      {
+        "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+        "paymentId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        "merchantId": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+        "amount": 2000,
+        "currency": "USD",
+        "status": "APPROVED",
+        "createdAt": "2026-09-29T18:05:00Z"
+      }
+    ],
+    "page": 0,
+    "size": 20,
+    "totalElements": 1,
+    "totalPages": 1
+  }
+  ```
+
+---
+
+#### 7. Get Refund
 Retrieves refund status by ID. Tenant-scoped (returns `404 Not Found` if accessed across merchants).
 
 - **URL**: `GET /refunds/{id}`

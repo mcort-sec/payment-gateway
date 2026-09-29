@@ -1,5 +1,6 @@
 package com.miguelcortes.paymentgateway.application.pagination;
 
+import com.miguelcortes.paymentgateway.application.exception.InvalidPaginationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -49,36 +50,36 @@ class PageQueryTest {
     }
 
     @Test
-    @DisplayName("Should throw IllegalArgumentException when page is negative")
+    @DisplayName("Should throw InvalidPaginationException when page is negative")
     void shouldThrowExceptionWhenPageIsNegative() {
-        IllegalArgumentException ex = assertThrows(
-                IllegalArgumentException.class,
+        InvalidPaginationException ex = assertThrows(
+                InvalidPaginationException.class,
                 () -> new PageQuery(-1, 20)
         );
         assertEquals("Page index must not be negative", ex.getMessage());
     }
 
     @Test
-    @DisplayName("Should throw IllegalArgumentException when size is zero or negative")
+    @DisplayName("Should throw InvalidPaginationException when size is zero or negative")
     void shouldThrowExceptionWhenSizeIsZeroOrNegative() {
-        IllegalArgumentException exZero = assertThrows(
-                IllegalArgumentException.class,
+        InvalidPaginationException exZero = assertThrows(
+                InvalidPaginationException.class,
                 () -> new PageQuery(0, 0)
         );
         assertEquals("Page size must be between 1 and 100", exZero.getMessage());
 
-        IllegalArgumentException exNegative = assertThrows(
-                IllegalArgumentException.class,
+        InvalidPaginationException exNegative = assertThrows(
+                InvalidPaginationException.class,
                 () -> new PageQuery(0, -5)
         );
         assertEquals("Page size must be between 1 and 100", exNegative.getMessage());
     }
 
     @Test
-    @DisplayName("Should throw IllegalArgumentException when size exceeds MAX_SIZE (100)")
+    @DisplayName("Should throw InvalidPaginationException when size exceeds MAX_SIZE (100)")
     void shouldThrowExceptionWhenSizeExceedsMax() {
-        IllegalArgumentException ex = assertThrows(
-                IllegalArgumentException.class,
+        InvalidPaginationException ex = assertThrows(
+                InvalidPaginationException.class,
                 () -> new PageQuery(0, 101)
         );
         assertEquals("Page size must be between 1 and 100", ex.getMessage());

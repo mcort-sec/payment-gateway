@@ -15,6 +15,7 @@ import com.miguelcortes.paymentgateway.application.usecase.ApproveRefundUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreateRefundUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.DeclineRefundUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.GetRefundUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.ListRefundsUseCase;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentStateException;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidRefundException;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidRefundStateException;
@@ -27,6 +28,8 @@ import com.miguelcortes.paymentgateway.infrastructure.security.ApiKeyAuthenticat
 import com.miguelcortes.paymentgateway.infrastructure.security.ApiKeyParser;
 import com.miguelcortes.paymentgateway.infrastructure.security.MerchantPrincipal;
 import com.miguelcortes.paymentgateway.infrastructure.security.ProcessorPrincipal;
+import com.miguelcortes.paymentgateway.application.pagination.PageQuery;
+import com.miguelcortes.paymentgateway.application.pagination.PageResult;
 import com.miguelcortes.paymentgateway.infrastructure.security.SecurityConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -39,6 +42,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.endsWith;
@@ -71,6 +75,9 @@ class RefundControllerTest {
 
     @MockitoBean
     private GetRefundUseCase getRefundUseCase;
+
+    @MockitoBean
+    private ListRefundsUseCase listRefundsUseCase;
 
     @MockitoBean
     private ApproveRefundUseCase approveRefundUseCase;
@@ -347,5 +354,77 @@ class RefundControllerTest {
                 .andExpect(jsonPath("$.message").value("Required header 'Idempotency-Key' is missing"));
 
         verifyNoInteractions(createRefundUseCase);
+    }
+
+    @Test
+    @DisplayName("Should return 200 and paged refunds for authenticated merchant")
+    void shouldReturn200AndPagedRefunds() throws Exception {
+        UUID merchantId = UUID.randomUUID();
+        Refund refund = new Refund(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                merchantId,
+                5000L,
+                Currency.COP,
+                "refund-key-1",
+                Instant.now()
+        );
+        PageResult<Refund> pageResult = new PageResult<>(
+                List.of(refund),
+                0,
+                20,
+                1L,
+                1
+        );
+
+        when(listRefundsUseCase.execute(merchantId, new PageQuery(0, 20)))
+                .thenReturn(pageResult);
+
+        mockMvc.perform(get("/refunds")
+                        .with(authenticatedMerchant(merchantId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(refund.getId().toString()))
+                .andExpect(jsonPath("$.content[0].merchantId").value(merchantId.toString()))
+                .andExpect(jsonPath("$.content[0].amount").value(5000))
+                .andExpect(jsonPath("$.content[0].currency").value("COP"))
+                .andExpect(jsonPath("$.content[0].status").value("PENDING"))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1));
+    }
+
+    @Test
+    @DisplayName("Should return 400 Bad Request when page is negative for list refunds")
+    void shouldReturn400WhenPageIsNegativeForListRefunds() throws Exception {
+        UUID merchantId = UUID.randomUUID();
+
+        mockMvc.perform(get("/refunds")
+                        .with(authenticatedMerchant(merchantId))
+                        .param("page", "-1")
+                        .param("size", "20"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value("Page index must not be negative"))
+                .andExpect(jsonPath("$.path").value("/refunds"));
+    }
+
+    @Test
+    @DisplayName("Should return 403 Forbidden when processor attempts to list refunds")
+    void shouldReturn403WhenProcessorAttemptsToListRefunds() throws Exception {
+        UUID processorId = UUID.randomUUID();
+
+        mockMvc.perform(get("/refunds")
+                        .with(authenticatedProcessor(processorId)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Should return 401 Unauthorized when unauthenticated client attempts to list refunds")
+    void shouldReturn401WhenUnauthenticatedToListRefunds() throws Exception {
+        mockMvc.perform(get("/refunds"))
+                .andExpect(status().isUnauthorized());
     }
 }

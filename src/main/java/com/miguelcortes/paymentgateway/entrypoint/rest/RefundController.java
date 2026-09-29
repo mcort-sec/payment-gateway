@@ -1,12 +1,16 @@
 package com.miguelcortes.paymentgateway.entrypoint.rest;
 
 import com.miguelcortes.paymentgateway.application.command.CreateRefundCommand;
+import com.miguelcortes.paymentgateway.application.pagination.PageQuery;
+import com.miguelcortes.paymentgateway.application.pagination.PageResult;
 import com.miguelcortes.paymentgateway.application.usecase.ApproveRefundUseCase;
-import com.miguelcortes.paymentgateway.application.usecase.DeclineRefundUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreateRefundUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.DeclineRefundUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.GetRefundUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.ListRefundsUseCase;
 import com.miguelcortes.paymentgateway.domain.model.Refund;
 import com.miguelcortes.paymentgateway.entrypoint.rest.dto.CreateRefundRequest;
+import com.miguelcortes.paymentgateway.entrypoint.rest.dto.PagedResponse;
 import com.miguelcortes.paymentgateway.entrypoint.rest.dto.RefundResponse;
 import com.miguelcortes.paymentgateway.infrastructure.security.MerchantPrincipal;
 import com.miguelcortes.paymentgateway.infrastructure.security.ProcessorPrincipal;
@@ -21,6 +25,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -33,19 +38,33 @@ public class RefundController {
 
     private final CreateRefundUseCase createRefundUseCase;
     private final GetRefundUseCase getRefundUseCase;
+    private final ListRefundsUseCase listRefundsUseCase;
     private final ApproveRefundUseCase approveRefundUseCase;
     private final DeclineRefundUseCase declineRefundUseCase;
 
     public RefundController(
             CreateRefundUseCase createRefundUseCase,
             GetRefundUseCase getRefundUseCase,
+            ListRefundsUseCase listRefundsUseCase,
             ApproveRefundUseCase approveRefundUseCase,
             DeclineRefundUseCase declineRefundUseCase
     ) {
         this.createRefundUseCase = createRefundUseCase;
         this.getRefundUseCase = getRefundUseCase;
+        this.listRefundsUseCase = listRefundsUseCase;
         this.approveRefundUseCase = approveRefundUseCase;
         this.declineRefundUseCase = declineRefundUseCase;
+    }
+
+    @GetMapping("/refunds")
+    public ResponseEntity<PagedResponse<RefundResponse>> listRefunds(
+            @AuthenticationPrincipal MerchantPrincipal principal,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        PageQuery pageQuery = new PageQuery(page, size);
+        PageResult<Refund> result = listRefundsUseCase.execute(principal.merchantId(), pageQuery);
+        return ResponseEntity.ok(PagedResponse.from(result, RefundResponse::fromDomain));
     }
 
     @PostMapping("/payments/{paymentId}/refunds")

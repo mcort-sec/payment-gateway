@@ -1,6 +1,7 @@
 package com.miguelcortes.paymentgateway.entrypoint.rest;
 
 import com.miguelcortes.paymentgateway.application.exception.IdempotencyConflictException;
+import com.miguelcortes.paymentgateway.application.exception.InvalidPaginationException;
 import com.miguelcortes.paymentgateway.application.exception.MerchantNotFoundException;
 import com.miguelcortes.paymentgateway.application.exception.MerchantSuspendedException;
 import com.miguelcortes.paymentgateway.application.exception.PaymentConcurrentModificationException;
@@ -354,6 +355,20 @@ public class GlobalExceptionHandler {
                 HttpStatus.BAD_REQUEST.value(),
                 HttpStatus.BAD_REQUEST.getReasonPhrase(),
                 "Malformed JSON request or invalid field format",
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
+    @ExceptionHandler(InvalidPaginationException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidPagination(
+            InvalidPaginationException ex,
+            HttpServletRequest request
+    ) {
+        ErrorResponse error = ErrorResponse.of(
+                HttpStatus.BAD_REQUEST.value(),
+                HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                ex.getMessage(),
                 request.getRequestURI()
         );
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
