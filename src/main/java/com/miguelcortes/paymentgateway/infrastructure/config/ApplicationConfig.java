@@ -8,6 +8,8 @@ import com.miguelcortes.paymentgateway.application.port.out.MerchantRepositoryPo
 import com.miguelcortes.paymentgateway.application.port.out.PaymentRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.ProcessorCredentialRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.ProcessorRepositoryPort;
+import com.miguelcortes.paymentgateway.application.port.out.RefundRepositoryPort;
+import com.miguelcortes.paymentgateway.application.port.out.RefundReservationPort;
 import com.miguelcortes.paymentgateway.application.port.out.TimeProvider;
 import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CancelPaymentUseCase;
@@ -16,6 +18,7 @@ import com.miguelcortes.paymentgateway.application.usecase.CreateMerchantUseCase
 import com.miguelcortes.paymentgateway.application.usecase.CreatePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreateProcessorCredentialUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreateProcessorUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.CreateRefundUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.DeclinePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.GetPaymentUseCase;
 import org.springframework.context.annotation.Bean;
@@ -119,6 +122,23 @@ public class ApplicationConfig {
                 processorRepositoryPort,
                 apiKeyGeneratorPort,
                 apiKeyHasherPort,
+                idGenerator,
+                timeProvider
+        );
+    }
+
+    @Bean
+    public CreateRefundUseCase createRefundUseCase(
+            PaymentRepositoryPort paymentRepositoryPort,
+            RefundRepositoryPort refundRepositoryPort,
+            RefundReservationPort refundReservationPort,
+            IdGenerator idGenerator,
+            TimeProvider timeProvider
+    ) {
+        return new CreateRefundUseCase(
+                paymentRepositoryPort,
+                refundRepositoryPort,
+                refundReservationPort,
                 idGenerator,
                 timeProvider
         );
