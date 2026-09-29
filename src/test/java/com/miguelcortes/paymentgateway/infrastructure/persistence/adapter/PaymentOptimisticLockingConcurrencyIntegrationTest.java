@@ -174,5 +174,10 @@ class PaymentOptimisticLockingConcurrencyIntegrationTest {
         public Optional<Payment> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey) {
             return delegate.findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey);
         }
+
+        @Override
+        public Optional<Payment> findByIdAndMerchantId(UUID id, UUID merchantId) {
+            return delegate.findByIdAndMerchantId(id, merchantId);
+        }
     }
 }

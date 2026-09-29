@@ -162,6 +162,12 @@ class DeclinePaymentUseCaseTest {
         }
 
         @Override
+        public Optional<Payment> findByIdAndMerchantId(UUID id, UUID merchantId) {
+            return Optional.ofNullable(storage.get(id))
+                    .filter(p -> p.getMerchantId().equals(merchantId));
+        }
+
+        @Override
         public Optional<Payment> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey) {
             return storage.values().stream()
                     .filter(p -> p.getMerchantId().equals(merchantId) && p.getIdempotencyKey().equals(idempotencyKey))

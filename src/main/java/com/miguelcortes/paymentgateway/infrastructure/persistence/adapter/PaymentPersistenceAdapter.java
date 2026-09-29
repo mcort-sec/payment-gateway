@@ -59,6 +59,12 @@ public class PaymentPersistenceAdapter implements PaymentRepositoryPort {
     }
 
     @Override
+    public Optional<Payment> findByIdAndMerchantId(UUID id, UUID merchantId) {
+        return springDataRepository.findByIdAndMerchantId(id, merchantId)
+                .map(paymentMapper::toDomain);
+    }
+
+    @Override
     public Optional<Payment> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey) {
         return springDataRepository.findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey)
                 .map(paymentMapper::toDomain);

@@ -19,10 +19,11 @@ public class ApplicationConfig {
     @Bean
     public CreatePaymentUseCase createPaymentUseCase(
             PaymentRepositoryPort paymentRepositoryPort,
+            MerchantRepositoryPort merchantRepositoryPort,
             IdGenerator idGenerator,
             TimeProvider timeProvider
     ) {
-        return new CreatePaymentUseCase(paymentRepositoryPort, idGenerator, timeProvider);
+        return new CreatePaymentUseCase(paymentRepositoryPort, merchantRepositoryPort, idGenerator, timeProvider);
     }
 
     @Bean

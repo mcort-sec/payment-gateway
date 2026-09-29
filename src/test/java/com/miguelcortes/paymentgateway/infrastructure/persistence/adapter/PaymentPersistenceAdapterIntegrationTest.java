@@ -154,4 +154,59 @@ class PaymentPersistenceAdapterIntegrationTest {
 
         assertTrue(exception.getMessage().contains(idempotencyKey));
     }
+
+    @Test
+    void shouldFindPaymentByIdAndMerchantIdWhenMatches() {
+        UUID id = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
+        merchantAdapter.save(new Merchant(merchantId, "Merchant IT 4", "m_it4@test.com", Instant.now()));
+
+        Payment payment = new Payment(
+                id,
+                merchantId,
+                75000L,
+                Currency.COP,
+                "req-it-find-scoped-1",
+                Instant.now().truncatedTo(ChronoUnit.MICROS)
+        );
+        adapter.save(payment);
+
+        Optional<Payment> found = adapter.findByIdAndMerchantId(id, merchantId);
+        assertTrue(found.isPresent());
+        assertEquals(id, found.get().getId());
+        assertEquals(merchantId, found.get().getMerchantId());
+    }
+
+    @Test
+    void shouldReturnEmptyWhenPaymentExistsButMerchantIdDoesNotMatch() {
+        UUID id = UUID.randomUUID();
+        UUID ownerMerchantId = UUID.randomUUID();
+        UUID otherMerchantId = UUID.randomUUID();
+
+        merchantAdapter.save(new Merchant(ownerMerchantId, "Merchant Owner", "owner@test.com", Instant.now()));
+        merchantAdapter.save(new Merchant(otherMerchantId, "Merchant Other", "other@test.com", Instant.now()));
+
+        Payment payment = new Payment(
+                id,
+                ownerMerchantId,
+                80000L,
+                Currency.COP,
+                "req-it-find-scoped-2",
+                Instant.now().truncatedTo(ChronoUnit.MICROS)
+        );
+        adapter.save(payment);
+
+        Optional<Payment> found = adapter.findByIdAndMerchantId(id, otherMerchantId);
+        assertTrue(found.isEmpty());
+    }
+
+    @Test
+    void shouldReturnEmptyWhenPaymentIdDoesNotExist() {
+        UUID nonExistentPaymentId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
+        merchantAdapter.save(new Merchant(merchantId, "Merchant IT 5", "m_it5@test.com", Instant.now()));
+
+        Optional<Payment> found = adapter.findByIdAndMerchantId(nonExistentPaymentId, merchantId);
+        assertTrue(found.isEmpty());
+    }
 }

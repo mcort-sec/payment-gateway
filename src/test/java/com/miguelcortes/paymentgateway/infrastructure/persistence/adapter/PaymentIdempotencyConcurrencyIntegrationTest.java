@@ -85,7 +85,7 @@ class PaymentIdempotencyConcurrencyIntegrationTest {
         ConcurrentBarrierPaymentRepositoryDecorator barrierAdapter =
                 new ConcurrentBarrierPaymentRepositoryDecorator(realAdapter, 2);
 
-        CreatePaymentUseCase useCase = new CreatePaymentUseCase(barrierAdapter, idGenerator, timeProvider);
+        CreatePaymentUseCase useCase = new CreatePaymentUseCase(barrierAdapter, merchantAdapter, idGenerator, timeProvider);
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
@@ -127,7 +127,7 @@ class PaymentIdempotencyConcurrencyIntegrationTest {
         ConcurrentBarrierPaymentRepositoryDecorator barrierAdapter =
                 new ConcurrentBarrierPaymentRepositoryDecorator(realAdapter, 2);
 
-        CreatePaymentUseCase useCase = new CreatePaymentUseCase(barrierAdapter, idGenerator, timeProvider);
+        CreatePaymentUseCase useCase = new CreatePaymentUseCase(barrierAdapter, merchantAdapter, idGenerator, timeProvider);
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
@@ -205,6 +205,11 @@ class PaymentIdempotencyConcurrencyIntegrationTest {
         @Override
         public Optional<Payment> findById(UUID id) {
             return delegate.findById(id);
+        }
+
+        @Override
+        public Optional<Payment> findByIdAndMerchantId(UUID id, UUID merchantId) {
+            return delegate.findByIdAndMerchantId(id, merchantId);
         }
     }
 }

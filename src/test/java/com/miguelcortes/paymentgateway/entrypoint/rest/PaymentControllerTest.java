@@ -2,6 +2,8 @@ package com.miguelcortes.paymentgateway.entrypoint.rest;
 
 import com.miguelcortes.paymentgateway.application.command.CreatePaymentCommand;
 import com.miguelcortes.paymentgateway.application.exception.IdempotencyConflictException;
+import com.miguelcortes.paymentgateway.application.exception.MerchantNotFoundException;
+import com.miguelcortes.paymentgateway.application.exception.MerchantSuspendedException;
 import com.miguelcortes.paymentgateway.application.exception.PaymentConcurrentModificationException;
 import com.miguelcortes.paymentgateway.application.exception.PaymentNotFoundException;
 import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
@@ -673,5 +675,59 @@ class PaymentControllerTest {
                 .andExpect(jsonPath("$.timestamp").value(notNullValue()));
 
         verify(approvePaymentUseCase).execute(paymentId);
+    }
+
+    @Test
+    @DisplayName("Should return 404 Not Found when creating payment and merchant does not exist")
+    void shouldReturn404WhenCreatingPaymentAndMerchantDoesNotExist() throws Exception {
+        UUID merchantId = UUID.randomUUID();
+        String requestJson = """
+                {
+                    "merchantId": "%s",
+                    "amount": 50000,
+                    "currency": "COP"
+                }
+                """.formatted(merchantId);
+
+        when(createPaymentUseCase.execute(any(CreatePaymentCommand.class)))
+                .thenThrow(new MerchantNotFoundException(merchantId));
+
+        mockMvc.perform(post("/payments")
+                        .header("Idempotency-Key", "valid-key-not-found")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.message").value("Merchant not found with id: " + merchantId))
+                .andExpect(jsonPath("$.path").value("/payments"))
+                .andExpect(jsonPath("$.timestamp").value(notNullValue()));
+    }
+
+    @Test
+    @DisplayName("Should return 403 Forbidden when creating payment and merchant is suspended")
+    void shouldReturn403WhenCreatingPaymentAndMerchantIsSuspended() throws Exception {
+        UUID merchantId = UUID.randomUUID();
+        String requestJson = """
+                {
+                    "merchantId": "%s",
+                    "amount": 50000,
+                    "currency": "COP"
+                }
+                """.formatted(merchantId);
+
+        when(createPaymentUseCase.execute(any(CreatePaymentCommand.class)))
+                .thenThrow(new MerchantSuspendedException(merchantId));
+
+        mockMvc.perform(post("/payments")
+                        .header("Idempotency-Key", "valid-key-suspended")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message").value("Merchant is suspended: " + merchantId))
+                .andExpect(jsonPath("$.path").value("/payments"))
+                .andExpect(jsonPath("$.timestamp").value(notNullValue()));
     }
 }
