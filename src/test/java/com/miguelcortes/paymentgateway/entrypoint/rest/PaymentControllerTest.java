@@ -2,7 +2,9 @@ package com.miguelcortes.paymentgateway.entrypoint.rest;
 
 import com.miguelcortes.paymentgateway.application.command.CreatePaymentCommand;
 import com.miguelcortes.paymentgateway.application.exception.IdempotencyConflictException;
+import com.miguelcortes.paymentgateway.application.exception.PaymentNotFoundException;
 import com.miguelcortes.paymentgateway.application.usecase.CreatePaymentUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.GetPaymentUseCase;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentException;
 import com.miguelcortes.paymentgateway.domain.model.Currency;
 import com.miguelcortes.paymentgateway.domain.model.Payment;
@@ -25,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -39,6 +42,9 @@ class PaymentControllerTest {
 
     @MockitoBean
     private CreatePaymentUseCase createPaymentUseCase;
+
+    @MockitoBean
+    private GetPaymentUseCase getPaymentUseCase;
 
     @Test
     @DisplayName("Should create payment successfully and return 201 with Location header and body")
@@ -314,5 +320,69 @@ class PaymentControllerTest {
                 .andExpect(jsonPath("$.message").value("Payment ID cannot be null"))
                 .andExpect(jsonPath("$.path").value("/payments"))
                 .andExpect(jsonPath("$.timestamp").value(notNullValue()));
+    }
+
+    @Test
+    @DisplayName("Should return 200 OK and PaymentResponse when payment exists for GET /payments/{id}")
+    void shouldReturn200WhenPaymentExists() throws Exception {
+        UUID paymentId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-09-28T21:00:00Z");
+
+        Payment mockPayment = Payment.reconstitute(
+                paymentId,
+                customerId,
+                80000L,
+                Currency.COP,
+                PaymentStatus.PENDING,
+                "key-get-1",
+                createdAt
+        );
+
+        when(getPaymentUseCase.execute(paymentId)).thenReturn(mockPayment);
+
+        mockMvc.perform(get("/payments/{id}", paymentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(paymentId.toString()))
+                .andExpect(jsonPath("$.customerId").value(customerId.toString()))
+                .andExpect(jsonPath("$.amount").value(80000))
+                .andExpect(jsonPath("$.currency").value("COP"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.createdAt").value("2026-09-28T21:00:00Z"));
+
+        verify(getPaymentUseCase).execute(paymentId);
+    }
+
+    @Test
+    @DisplayName("Should return 404 Not Found when payment does not exist for GET /payments/{id}")
+    void shouldReturn404WhenPaymentDoesNotExist() throws Exception {
+        UUID nonExistentId = UUID.randomUUID();
+
+        when(getPaymentUseCase.execute(nonExistentId))
+                .thenThrow(new PaymentNotFoundException(nonExistentId));
+
+        mockMvc.perform(get("/payments/{id}", nonExistentId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.message").value("Payment not found with id: " + nonExistentId))
+                .andExpect(jsonPath("$.path").value("/payments/" + nonExistentId))
+                .andExpect(jsonPath("$.timestamp").value(notNullValue()));
+
+        verify(getPaymentUseCase).execute(nonExistentId);
+    }
+
+    @Test
+    @DisplayName("Should return 400 Bad Request when payment ID has invalid UUID format for GET /payments/{id}")
+    void shouldReturn400WhenPaymentIdHasInvalidUuidFormat() throws Exception {
+        mockMvc.perform(get("/payments/{id}", "not-a-valid-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value(notNullValue()))
+                .andExpect(jsonPath("$.path").value("/payments/not-a-valid-uuid"))
+                .andExpect(jsonPath("$.timestamp").value(notNullValue()));
+
+        verifyNoInteractions(getPaymentUseCase);
     }
 }

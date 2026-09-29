@@ -24,6 +24,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -204,5 +205,51 @@ class PaymentCreationEndToEndTest {
         assertThat(paymentRepository.count()).isEqualTo(1L);
         PaymentEntity entity = paymentRepository.findAll().get(0);
         assertThat(entity.getAmount()).isEqualTo(50000L);
+    }
+
+    @Test
+    @DisplayName("4. Create and retrieve: POST /payments followed by GET /payments/{id} returns the same payment")
+    void shouldCreatePaymentAndRetrieveItByIdSuccessfully() throws Exception {
+        UUID customerId = UUID.randomUUID();
+        String idempotencyKey = "e2e-get-key-1";
+        long amount = 65000L;
+        Currency currency = Currency.COP;
+
+        String requestJson = """
+                {
+                    "customerId": "%s",
+                    "amount": %d,
+                    "currency": "%s"
+                }
+                """.formatted(customerId, amount, currency);
+
+        // 1. POST /payments
+        MvcResult createResult = mockMvc.perform(post("/payments")
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        String createJson = createResult.getResponse().getContentAsString();
+        UUID createdId = UUID.fromString(JsonPath.read(createJson, "$.id"));
+        String createdAt = JsonPath.read(createJson, "$.createdAt");
+
+        // 2. GET /payments/{id}
+        mockMvc.perform(get("/payments/{id}", createdId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(createdId.toString()))
+                .andExpect(jsonPath("$.customerId").value(customerId.toString()))
+                .andExpect(jsonPath("$.amount").value(amount))
+                .andExpect(jsonPath("$.currency").value(currency.name()))
+                .andExpect(jsonPath("$.status").value(PaymentStatus.PENDING.name()))
+                .andExpect(jsonPath("$.createdAt").value(createdAt));
+
+        // 3. Verify in PostgreSQL
+        Optional<PaymentEntity> entity = paymentRepository.findById(createdId);
+        assertThat(entity).isPresent();
+        assertThat(entity.get().getId()).isEqualTo(createdId);
+        assertThat(entity.get().getCustomerId()).isEqualTo(customerId);
+        assertThat(entity.get().getAmount()).isEqualTo(amount);
     }
 }
