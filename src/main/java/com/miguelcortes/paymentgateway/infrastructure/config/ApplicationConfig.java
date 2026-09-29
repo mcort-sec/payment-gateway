@@ -12,6 +12,7 @@ import com.miguelcortes.paymentgateway.application.port.out.RefundRepositoryPort
 import com.miguelcortes.paymentgateway.application.port.out.RefundReservationPort;
 import com.miguelcortes.paymentgateway.application.port.out.TimeProvider;
 import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.ApproveRefundUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CancelPaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreateApiCredentialUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreateMerchantUseCase;
@@ -20,6 +21,7 @@ import com.miguelcortes.paymentgateway.application.usecase.CreateProcessorCreden
 import com.miguelcortes.paymentgateway.application.usecase.CreateProcessorUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreateRefundUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.DeclinePaymentUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.DeclineRefundUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.GetPaymentUseCase;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -142,5 +144,21 @@ public class ApplicationConfig {
                 idGenerator,
                 timeProvider
         );
+    }
+
+    @Bean
+    public ApproveRefundUseCase approveRefundUseCase(
+            RefundRepositoryPort refundRepositoryPort,
+            ProcessorRepositoryPort processorRepositoryPort
+    ) {
+        return new ApproveRefundUseCase(refundRepositoryPort, processorRepositoryPort);
+    }
+
+    @Bean
+    public DeclineRefundUseCase declineRefundUseCase(
+            RefundRepositoryPort refundRepositoryPort,
+            ProcessorRepositoryPort processorRepositoryPort
+    ) {
+        return new DeclineRefundUseCase(refundRepositoryPort, processorRepositoryPort);
     }
 }
