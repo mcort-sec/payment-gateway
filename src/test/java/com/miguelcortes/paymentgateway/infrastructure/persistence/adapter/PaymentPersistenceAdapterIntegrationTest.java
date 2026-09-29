@@ -2,8 +2,10 @@ package com.miguelcortes.paymentgateway.infrastructure.persistence.adapter;
 
 import com.miguelcortes.paymentgateway.application.exception.DuplicateIdempotencyKeyException;
 import com.miguelcortes.paymentgateway.domain.model.Currency;
+import com.miguelcortes.paymentgateway.domain.model.Merchant;
 import com.miguelcortes.paymentgateway.domain.model.Payment;
 import com.miguelcortes.paymentgateway.domain.model.PaymentStatus;
+import com.miguelcortes.paymentgateway.infrastructure.persistence.mapper.MerchantMapper;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.mapper.PaymentMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,7 +29,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({PaymentPersistenceAdapter.class, PaymentMapper.class})
+@Import({
+        PaymentPersistenceAdapter.class,
+        PaymentMapper.class,
+        MerchantPersistenceAdapter.class,
+        MerchantMapper.class
+})
 @Testcontainers
 class PaymentPersistenceAdapterIntegrationTest {
 
@@ -38,10 +45,15 @@ class PaymentPersistenceAdapterIntegrationTest {
     @Autowired
     private PaymentPersistenceAdapter adapter;
 
+    @Autowired
+    private MerchantPersistenceAdapter merchantAdapter;
+
     @Test
     void shouldSaveAndRetrieveNewPaymentByIdAndByMerchantAndIdempotencyKey() {
         UUID id = UUID.randomUUID();
         UUID merchantId = UUID.randomUUID();
+        merchantAdapter.save(new Merchant(merchantId, "Merchant IT 1", "m_it1@test.com", Instant.now()));
+
         String idempotencyKey = "req-it-001";
         Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
 
@@ -80,6 +92,8 @@ class PaymentPersistenceAdapterIntegrationTest {
     void shouldIncrementVersionWhenUpdatingExistingPaymentState() {
         UUID id = UUID.randomUUID();
         UUID merchantId = UUID.randomUUID();
+        merchantAdapter.save(new Merchant(merchantId, "Merchant IT 2", "m_it2@test.com", Instant.now()));
+
         String idempotencyKey = "req-it-version-inc";
         Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
 
@@ -109,6 +123,8 @@ class PaymentPersistenceAdapterIntegrationTest {
     @Test
     void shouldTranslatePostgresUniqueConstraintToDuplicateIdempotencyKeyException() {
         UUID merchantId = UUID.randomUUID();
+        merchantAdapter.save(new Merchant(merchantId, "Merchant IT 3", "m_it3@test.com", Instant.now()));
+
         String idempotencyKey = "req-it-duplicate";
 
         Payment payment1 = new Payment(

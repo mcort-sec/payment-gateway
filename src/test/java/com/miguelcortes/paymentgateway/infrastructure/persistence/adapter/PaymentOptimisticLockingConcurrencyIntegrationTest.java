@@ -5,8 +5,10 @@ import com.miguelcortes.paymentgateway.application.port.out.PaymentRepositoryPor
 import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CancelPaymentUseCase;
 import com.miguelcortes.paymentgateway.domain.model.Currency;
+import com.miguelcortes.paymentgateway.domain.model.Merchant;
 import com.miguelcortes.paymentgateway.domain.model.Payment;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.entity.PaymentEntity;
+import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataMerchantRepository;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataPaymentRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -48,11 +50,18 @@ class PaymentOptimisticLockingConcurrencyIntegrationTest {
     private PaymentPersistenceAdapter realAdapter;
 
     @Autowired
+    private MerchantPersistenceAdapter merchantAdapter;
+
+    @Autowired
     private SpringDataPaymentRepository springDataPaymentRepository;
+
+    @Autowired
+    private SpringDataMerchantRepository springDataMerchantRepository;
 
     @BeforeEach
     void setUp() {
         springDataPaymentRepository.deleteAll();
+        springDataMerchantRepository.deleteAll();
     }
 
     @Test
@@ -61,6 +70,8 @@ class PaymentOptimisticLockingConcurrencyIntegrationTest {
         // 1. Crear y persistir pago PENDING inicial
         UUID paymentId = UUID.randomUUID();
         UUID merchantId = UUID.randomUUID();
+        merchantAdapter.save(new Merchant(merchantId, "Merchant OptLock", "m_optlock@test.com", Instant.now()));
+
         Payment initialPayment = new Payment(
                 paymentId,
                 merchantId,

@@ -7,9 +7,11 @@ import com.miguelcortes.paymentgateway.application.port.out.PaymentRepositoryPor
 import com.miguelcortes.paymentgateway.application.port.out.TimeProvider;
 import com.miguelcortes.paymentgateway.application.usecase.CreatePaymentUseCase;
 import com.miguelcortes.paymentgateway.domain.model.Currency;
+import com.miguelcortes.paymentgateway.domain.model.Merchant;
 import com.miguelcortes.paymentgateway.domain.model.Payment;
 import com.miguelcortes.paymentgateway.infrastructure.generator.UuidGenerator;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.entity.PaymentEntity;
+import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataMerchantRepository;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataPaymentRepository;
 import com.miguelcortes.paymentgateway.infrastructure.time.SystemTimeProvider;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +24,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -49,7 +52,13 @@ class PaymentIdempotencyConcurrencyIntegrationTest {
     private PaymentPersistenceAdapter realAdapter;
 
     @Autowired
+    private MerchantPersistenceAdapter merchantAdapter;
+
+    @Autowired
     private SpringDataPaymentRepository springDataPaymentRepository;
+
+    @Autowired
+    private SpringDataMerchantRepository springDataMerchantRepository;
 
     private final IdGenerator idGenerator = new UuidGenerator();
     private final TimeProvider timeProvider = new SystemTimeProvider();
@@ -57,12 +66,15 @@ class PaymentIdempotencyConcurrencyIntegrationTest {
     @BeforeEach
     void setUp() {
         springDataPaymentRepository.deleteAll();
+        springDataMerchantRepository.deleteAll();
     }
 
     @Test
     @DisplayName("Concurrent requests with same payload: both threads receive identical Payment and only 1 row is created")
     void shouldHandleConcurrentRequestsWithSamePayloadAndPersistSinglePayment() throws Exception {
         UUID merchantId = UUID.randomUUID();
+        merchantAdapter.save(new Merchant(merchantId, "Merchant Conc 1", "m_conc1@test.com", Instant.now()));
+
         String idempotencyKey = "concurrent-same-payload-1";
         long amount = 100000L;
         Currency currency = Currency.COP;
@@ -105,6 +117,8 @@ class PaymentIdempotencyConcurrencyIntegrationTest {
     @DisplayName("Concurrent requests with conflicting payload: one thread succeeds, one fails with IdempotencyConflictException, and only 1 row is created")
     void shouldHandleConcurrentRequestsWithConflictingPayloadAndThrowConflictException() throws Exception {
         UUID merchantId = UUID.randomUUID();
+        merchantAdapter.save(new Merchant(merchantId, "Merchant Conc 2", "m_conc2@test.com", Instant.now()));
+
         String idempotencyKey = "concurrent-diff-payload-1";
 
         CreatePaymentCommand command1 = new CreatePaymentCommand(merchantId, 50000L, Currency.USD, idempotencyKey);
