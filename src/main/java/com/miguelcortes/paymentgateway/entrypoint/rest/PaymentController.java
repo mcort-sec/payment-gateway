@@ -2,7 +2,9 @@ package com.miguelcortes.paymentgateway.entrypoint.rest;
 
 import com.miguelcortes.paymentgateway.application.command.CreatePaymentCommand;
 import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.CancelPaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreatePaymentUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.DeclinePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.GetPaymentUseCase;
 import com.miguelcortes.paymentgateway.domain.model.Payment;
 import com.miguelcortes.paymentgateway.entrypoint.rest.dto.CreatePaymentRequest;
@@ -32,15 +34,21 @@ public class PaymentController {
     private final CreatePaymentUseCase createPaymentUseCase;
     private final GetPaymentUseCase getPaymentUseCase;
     private final ApprovePaymentUseCase approvePaymentUseCase;
+    private final DeclinePaymentUseCase declinePaymentUseCase;
+    private final CancelPaymentUseCase cancelPaymentUseCase;
 
     public PaymentController(
             CreatePaymentUseCase createPaymentUseCase,
             GetPaymentUseCase getPaymentUseCase,
-            ApprovePaymentUseCase approvePaymentUseCase
+            ApprovePaymentUseCase approvePaymentUseCase,
+            DeclinePaymentUseCase declinePaymentUseCase,
+            CancelPaymentUseCase cancelPaymentUseCase
     ) {
         this.createPaymentUseCase = createPaymentUseCase;
         this.getPaymentUseCase = getPaymentUseCase;
         this.approvePaymentUseCase = approvePaymentUseCase;
+        this.declinePaymentUseCase = declinePaymentUseCase;
+        this.cancelPaymentUseCase = cancelPaymentUseCase;
     }
 
     @PostMapping
@@ -78,6 +86,18 @@ public class PaymentController {
     @PostMapping("/{id}/approve")
     public ResponseEntity<PaymentResponse> approvePayment(@PathVariable UUID id) {
         Payment payment = approvePaymentUseCase.execute(id);
+        return ResponseEntity.ok(PaymentResponse.fromDomain(payment));
+    }
+
+    @PostMapping("/{id}/decline")
+    public ResponseEntity<PaymentResponse> declinePayment(@PathVariable UUID id) {
+        Payment payment = declinePaymentUseCase.execute(id);
+        return ResponseEntity.ok(PaymentResponse.fromDomain(payment));
+    }
+
+    @PostMapping("/{id}/cancel")
+    public ResponseEntity<PaymentResponse> cancelPayment(@PathVariable UUID id) {
+        Payment payment = cancelPaymentUseCase.execute(id);
         return ResponseEntity.ok(PaymentResponse.fromDomain(payment));
     }
 }

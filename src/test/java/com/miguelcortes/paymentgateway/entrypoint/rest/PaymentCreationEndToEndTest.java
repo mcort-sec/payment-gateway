@@ -310,4 +310,165 @@ class PaymentCreationEndToEndTest {
         assertThat(entityAfterConflict).isPresent();
         assertThat(entityAfterConflict.get().getStatus()).isEqualTo(PaymentStatus.APPROVED);
     }
+
+    @Test
+    @DisplayName("6. Decline payment flow: POST /payments -> POST /payments/{id}/decline -> GET /payments/{id} and subsequent decline conflict")
+    void shouldDeclinePaymentAndPreventSubsequentDeclineTransitions() throws Exception {
+        UUID customerId = UUID.randomUUID();
+        String idempotencyKey = "e2e-decline-key-1";
+        long amount = 45000L;
+        Currency currency = Currency.COP;
+
+        String requestJson = """
+                {
+                    "customerId": "%s",
+                    "amount": %d,
+                    "currency": "%s"
+                }
+                """.formatted(customerId, amount, currency);
+
+        // 1. POST /payments -> Creates PENDING payment
+        MvcResult createResult = mockMvc.perform(post("/payments")
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andReturn();
+
+        UUID paymentId = UUID.fromString(JsonPath.read(createResult.getResponse().getContentAsString(), "$.id"));
+
+        // 2. POST /payments/{id}/decline -> Returns DECLINED
+        mockMvc.perform(post("/payments/{id}/decline", paymentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(paymentId.toString()))
+                .andExpect(jsonPath("$.status").value("DECLINED"));
+
+        // 3. GET /payments/{id} -> Returns DECLINED
+        mockMvc.perform(get("/payments/{id}", paymentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(paymentId.toString()))
+                .andExpect(jsonPath("$.status").value("DECLINED"));
+
+        // 4. Verify in PostgreSQL directly
+        Optional<PaymentEntity> entity = paymentRepository.findById(paymentId);
+        assertThat(entity).isPresent();
+        assertThat(entity.get().getStatus()).isEqualTo(PaymentStatus.DECLINED);
+
+        // 5. Subsequent POST /payments/{id}/decline -> Returns 409 Conflict
+        mockMvc.perform(post("/payments/{id}/decline", paymentId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message").value("Cannot decline payment with status DECLINED"))
+                .andExpect(jsonPath("$.path").value("/payments/" + paymentId + "/decline"));
+
+        // 6. Verify in PostgreSQL that status remains DECLINED
+        Optional<PaymentEntity> entityAfterConflict = paymentRepository.findById(paymentId);
+        assertThat(entityAfterConflict).isPresent();
+        assertThat(entityAfterConflict.get().getStatus()).isEqualTo(PaymentStatus.DECLINED);
+    }
+
+    @Test
+    @DisplayName("7. Cancel payment flow: POST /payments -> POST /payments/{id}/cancel -> GET /payments/{id} and subsequent cancel conflict")
+    void shouldCancelPaymentAndPreventSubsequentCancelTransitions() throws Exception {
+        UUID customerId = UUID.randomUUID();
+        String idempotencyKey = "e2e-cancel-key-1";
+        long amount = 85000L;
+        Currency currency = Currency.USD;
+
+        String requestJson = """
+                {
+                    "customerId": "%s",
+                    "amount": %d,
+                    "currency": "%s"
+                }
+                """.formatted(customerId, amount, currency);
+
+        // 1. POST /payments -> Creates PENDING payment
+        MvcResult createResult = mockMvc.perform(post("/payments")
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andReturn();
+
+        UUID paymentId = UUID.fromString(JsonPath.read(createResult.getResponse().getContentAsString(), "$.id"));
+
+        // 2. POST /payments/{id}/cancel -> Returns CANCELLED
+        mockMvc.perform(post("/payments/{id}/cancel", paymentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(paymentId.toString()))
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+
+        // 3. GET /payments/{id} -> Returns CANCELLED
+        mockMvc.perform(get("/payments/{id}", paymentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(paymentId.toString()))
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+
+        // 4. Verify in PostgreSQL directly
+        Optional<PaymentEntity> entity = paymentRepository.findById(paymentId);
+        assertThat(entity).isPresent();
+        assertThat(entity.get().getStatus()).isEqualTo(PaymentStatus.CANCELLED);
+
+        // 5. Subsequent POST /payments/{id}/cancel -> Returns 409 Conflict
+        mockMvc.perform(post("/payments/{id}/cancel", paymentId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message").value("Cannot cancel payment with status CANCELLED"))
+                .andExpect(jsonPath("$.path").value("/payments/" + paymentId + "/cancel"));
+
+        // 6. Verify in PostgreSQL that status remains CANCELLED
+        Optional<PaymentEntity> entityAfterConflict = paymentRepository.findById(paymentId);
+        assertThat(entityAfterConflict).isPresent();
+        assertThat(entityAfterConflict.get().getStatus()).isEqualTo(PaymentStatus.CANCELLED);
+    }
+
+    @Test
+    @DisplayName("8. Cross-state conflict: Approved payment cannot be cancelled and remains APPROVED")
+    void shouldPreventCancellingAlreadyApprovedPayment() throws Exception {
+        UUID customerId = UUID.randomUUID();
+        String idempotencyKey = "e2e-cross-key-1";
+        long amount = 110000L;
+        Currency currency = Currency.COP;
+
+        String requestJson = """
+                {
+                    "customerId": "%s",
+                    "amount": %d,
+                    "currency": "%s"
+                }
+                """.formatted(customerId, amount, currency);
+
+        // 1. POST /payments -> Creates PENDING payment
+        MvcResult createResult = mockMvc.perform(post("/payments")
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID paymentId = UUID.fromString(JsonPath.read(createResult.getResponse().getContentAsString(), "$.id"));
+
+        // 2. POST /payments/{id}/approve -> Sets APPROVED
+        mockMvc.perform(post("/payments/{id}/approve", paymentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPROVED"));
+
+        // 3. POST /payments/{id}/cancel -> Returns 409 Conflict
+        mockMvc.perform(post("/payments/{id}/cancel", paymentId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message").value("Cannot cancel payment with status APPROVED"))
+                .andExpect(jsonPath("$.path").value("/payments/" + paymentId + "/cancel"));
+
+        // 4. Verify in PostgreSQL that status remains APPROVED
+        Optional<PaymentEntity> entity = paymentRepository.findById(paymentId);
+        assertThat(entity).isPresent();
+        assertThat(entity.get().getStatus()).isEqualTo(PaymentStatus.APPROVED);
+    }
 }

@@ -4,7 +4,9 @@ import com.miguelcortes.paymentgateway.application.port.out.IdGenerator;
 import com.miguelcortes.paymentgateway.application.port.out.PaymentRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.TimeProvider;
 import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.CancelPaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreatePaymentUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.DeclinePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.GetPaymentUseCase;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -29,5 +31,15 @@ public class ApplicationConfig {
     @Bean
     public ApprovePaymentUseCase approvePaymentUseCase(PaymentRepositoryPort paymentRepositoryPort) {
         return new ApprovePaymentUseCase(paymentRepositoryPort);
+    }
+
+    @Bean
+    public DeclinePaymentUseCase declinePaymentUseCase(PaymentRepositoryPort paymentRepositoryPort) {
+        return new DeclinePaymentUseCase(paymentRepositoryPort);
+    }
+
+    @Bean
+    public CancelPaymentUseCase cancelPaymentUseCase(PaymentRepositoryPort paymentRepositoryPort) {
+        return new CancelPaymentUseCase(paymentRepositoryPort);
     }
 }

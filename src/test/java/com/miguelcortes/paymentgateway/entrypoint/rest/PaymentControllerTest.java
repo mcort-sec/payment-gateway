@@ -4,7 +4,9 @@ import com.miguelcortes.paymentgateway.application.command.CreatePaymentCommand;
 import com.miguelcortes.paymentgateway.application.exception.IdempotencyConflictException;
 import com.miguelcortes.paymentgateway.application.exception.PaymentNotFoundException;
 import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.CancelPaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreatePaymentUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.DeclinePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.GetPaymentUseCase;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentException;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentStateException;
@@ -50,6 +52,12 @@ class PaymentControllerTest {
 
     @MockitoBean
     private ApprovePaymentUseCase approvePaymentUseCase;
+
+    @MockitoBean
+    private DeclinePaymentUseCase declinePaymentUseCase;
+
+    @MockitoBean
+    private CancelPaymentUseCase cancelPaymentUseCase;
 
     @Test
     @DisplayName("Should create payment successfully and return 201 with Location header and body")
@@ -472,5 +480,171 @@ class PaymentControllerTest {
                 .andExpect(jsonPath("$.timestamp").value(notNullValue()));
 
         verifyNoInteractions(approvePaymentUseCase);
+    }
+
+    @Test
+    @DisplayName("Should return 200 OK and DECLINED status when declining payment successfully")
+    void shouldReturn200WhenDecliningPaymentSuccessfully() throws Exception {
+        UUID paymentId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-09-28T21:00:00Z");
+
+        Payment declinedPayment = Payment.reconstitute(
+                paymentId,
+                customerId,
+                50000L,
+                Currency.COP,
+                PaymentStatus.DECLINED,
+                "key-decline-1",
+                createdAt
+        );
+
+        when(declinePaymentUseCase.execute(paymentId)).thenReturn(declinedPayment);
+
+        mockMvc.perform(post("/payments/{id}/decline", paymentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(paymentId.toString()))
+                .andExpect(jsonPath("$.customerId").value(customerId.toString()))
+                .andExpect(jsonPath("$.amount").value(50000))
+                .andExpect(jsonPath("$.currency").value("COP"))
+                .andExpect(jsonPath("$.status").value("DECLINED"))
+                .andExpect(jsonPath("$.createdAt").value("2026-09-28T21:00:00Z"));
+
+        verify(declinePaymentUseCase).execute(paymentId);
+    }
+
+    @Test
+    @DisplayName("Should return 404 Not Found when declining non-existent payment")
+    void shouldReturn404WhenDecliningNonExistentPayment() throws Exception {
+        UUID nonExistentId = UUID.randomUUID();
+
+        when(declinePaymentUseCase.execute(nonExistentId))
+                .thenThrow(new PaymentNotFoundException(nonExistentId));
+
+        mockMvc.perform(post("/payments/{id}/decline", nonExistentId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.message").value("Payment not found with id: " + nonExistentId))
+                .andExpect(jsonPath("$.path").value("/payments/" + nonExistentId + "/decline"))
+                .andExpect(jsonPath("$.timestamp").value(notNullValue()));
+
+        verify(declinePaymentUseCase).execute(nonExistentId);
+    }
+
+    @Test
+    @DisplayName("Should return 409 Conflict when declining payment with invalid state")
+    void shouldReturn409WhenDecliningPaymentWithInvalidState() throws Exception {
+        UUID paymentId = UUID.randomUUID();
+
+        when(declinePaymentUseCase.execute(paymentId))
+                .thenThrow(new InvalidPaymentStateException("Cannot decline payment with status DECLINED"));
+
+        mockMvc.perform(post("/payments/{id}/decline", paymentId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message").value("Cannot decline payment with status DECLINED"))
+                .andExpect(jsonPath("$.path").value("/payments/" + paymentId + "/decline"))
+                .andExpect(jsonPath("$.timestamp").value(notNullValue()));
+
+        verify(declinePaymentUseCase).execute(paymentId);
+    }
+
+    @Test
+    @DisplayName("Should return 400 Bad Request when declining payment with invalid UUID format")
+    void shouldReturn400WhenDecliningPaymentWithInvalidUuidFormat() throws Exception {
+        mockMvc.perform(post("/payments/{id}/decline", "invalid-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value(notNullValue()))
+                .andExpect(jsonPath("$.path").value("/payments/invalid-uuid/decline"))
+                .andExpect(jsonPath("$.timestamp").value(notNullValue()));
+
+        verifyNoInteractions(declinePaymentUseCase);
+    }
+
+    @Test
+    @DisplayName("Should return 200 OK and CANCELLED status when cancelling payment successfully")
+    void shouldReturn200WhenCancellingPaymentSuccessfully() throws Exception {
+        UUID paymentId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-09-28T21:00:00Z");
+
+        Payment cancelledPayment = Payment.reconstitute(
+                paymentId,
+                customerId,
+                50000L,
+                Currency.COP,
+                PaymentStatus.CANCELLED,
+                "key-cancel-1",
+                createdAt
+        );
+
+        when(cancelPaymentUseCase.execute(paymentId)).thenReturn(cancelledPayment);
+
+        mockMvc.perform(post("/payments/{id}/cancel", paymentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(paymentId.toString()))
+                .andExpect(jsonPath("$.customerId").value(customerId.toString()))
+                .andExpect(jsonPath("$.amount").value(50000))
+                .andExpect(jsonPath("$.currency").value("COP"))
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.createdAt").value("2026-09-28T21:00:00Z"));
+
+        verify(cancelPaymentUseCase).execute(paymentId);
+    }
+
+    @Test
+    @DisplayName("Should return 404 Not Found when cancelling non-existent payment")
+    void shouldReturn404WhenCancellingNonExistentPayment() throws Exception {
+        UUID nonExistentId = UUID.randomUUID();
+
+        when(cancelPaymentUseCase.execute(nonExistentId))
+                .thenThrow(new PaymentNotFoundException(nonExistentId));
+
+        mockMvc.perform(post("/payments/{id}/cancel", nonExistentId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.message").value("Payment not found with id: " + nonExistentId))
+                .andExpect(jsonPath("$.path").value("/payments/" + nonExistentId + "/cancel"))
+                .andExpect(jsonPath("$.timestamp").value(notNullValue()));
+
+        verify(cancelPaymentUseCase).execute(nonExistentId);
+    }
+
+    @Test
+    @DisplayName("Should return 409 Conflict when cancelling payment with invalid state")
+    void shouldReturn409WhenCancellingPaymentWithInvalidState() throws Exception {
+        UUID paymentId = UUID.randomUUID();
+
+        when(cancelPaymentUseCase.execute(paymentId))
+                .thenThrow(new InvalidPaymentStateException("Cannot cancel payment with status CANCELLED"));
+
+        mockMvc.perform(post("/payments/{id}/cancel", paymentId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message").value("Cannot cancel payment with status CANCELLED"))
+                .andExpect(jsonPath("$.path").value("/payments/" + paymentId + "/cancel"))
+                .andExpect(jsonPath("$.timestamp").value(notNullValue()));
+
+        verify(cancelPaymentUseCase).execute(paymentId);
+    }
+
+    @Test
+    @DisplayName("Should return 400 Bad Request when cancelling payment with invalid UUID format")
+    void shouldReturn400WhenCancellingPaymentWithInvalidUuidFormat() throws Exception {
+        mockMvc.perform(post("/payments/{id}/cancel", "invalid-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value(notNullValue()))
+                .andExpect(jsonPath("$.path").value("/payments/invalid-uuid/cancel"))
+                .andExpect(jsonPath("$.timestamp").value(notNullValue()));
+
+        verifyNoInteractions(cancelPaymentUseCase);
     }
 }
