@@ -60,10 +60,10 @@ class PaymentOptimisticLockingConcurrencyIntegrationTest {
     void shouldPreventLostUpdateWhenTwoThreadsConcurrentlyUpdateSamePayment() throws Exception {
         // 1. Crear y persistir pago PENDING inicial
         UUID paymentId = UUID.randomUUID();
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         Payment initialPayment = new Payment(
                 paymentId,
-                customerId,
+                merchantId,
                 100000L,
                 Currency.COP,
                 "opt-lock-key-1",
@@ -160,8 +160,8 @@ class PaymentOptimisticLockingConcurrencyIntegrationTest {
         }
 
         @Override
-        public Optional<Payment> findByCustomerIdAndIdempotencyKey(UUID customerId, String idempotencyKey) {
-            return delegate.findByCustomerIdAndIdempotencyKey(customerId, idempotencyKey);
+        public Optional<Payment> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey) {
+            return delegate.findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey);
         }
     }
 }

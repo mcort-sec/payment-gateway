@@ -76,9 +76,9 @@ class GetPaymentUseCaseTest {
         }
 
         @Override
-        public Optional<Payment> findByCustomerIdAndIdempotencyKey(UUID customerId, String idempotencyKey) {
+        public Optional<Payment> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey) {
             return storage.values().stream()
-                    .filter(p -> p.getCustomerId().equals(customerId) && p.getIdempotencyKey().equals(idempotencyKey))
+                    .filter(p -> p.getMerchantId().equals(merchantId) && p.getIdempotencyKey().equals(idempotencyKey))
                     .findFirst();
         }
     }

@@ -60,7 +60,7 @@ public class PaymentController {
             @Valid @RequestBody CreatePaymentRequest request
     ) {
         CreatePaymentCommand command = new CreatePaymentCommand(
-                request.customerId(),
+                request.merchantId(),
                 request.amount(),
                 request.currency(),
                 idempotencyKey

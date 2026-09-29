@@ -13,7 +13,7 @@ public class PaymentMapper {
         }
         return new PaymentEntity(
                 domain.getId(),
-                domain.getCustomerId(),
+                domain.getMerchantId(),
                 domain.getAmount(),
                 domain.getCurrency(),
                 domain.getStatus(),
@@ -29,7 +29,7 @@ public class PaymentMapper {
         }
         return Payment.reconstitute(
                 entity.getId(),
-                entity.getCustomerId(),
+                entity.getMerchantId(),
                 entity.getAmount(),
                 entity.getCurrency(),
                 entity.getStatus(),

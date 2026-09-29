@@ -25,12 +25,12 @@ class PaymentMapperTest {
     @Test
     void shouldMapNewPaymentWithNullVersionToEntityWithNullVersion() {
         UUID id = UUID.randomUUID();
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         Instant createdAt = Instant.now();
 
         Payment newPayment = new Payment(
                 id,
-                customerId,
+                merchantId,
                 100000L,
                 Currency.COP,
                 "req-new-map",
@@ -40,7 +40,7 @@ class PaymentMapperTest {
         PaymentEntity entity = mapper.toEntity(newPayment);
 
         assertEquals(id, entity.getId());
-        assertEquals(customerId, entity.getCustomerId());
+        assertEquals(merchantId, entity.getMerchantId());
         assertEquals(100000L, entity.getAmount());
         assertEquals(Currency.COP, entity.getCurrency());
         assertEquals(PaymentStatus.PENDING, entity.getStatus());
@@ -52,12 +52,12 @@ class PaymentMapperTest {
     @Test
     void shouldMapReconstitutedPaymentWithVersionToPaymentEntityPreservingAllFields() {
         UUID id = UUID.randomUUID();
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-09-28T14:30:00Z");
 
         Payment payment = Payment.reconstitute(
                 id,
-                customerId,
+                merchantId,
                 350000L,
                 Currency.COP,
                 PaymentStatus.APPROVED,
@@ -69,7 +69,7 @@ class PaymentMapperTest {
         PaymentEntity entity = mapper.toEntity(payment);
 
         assertEquals(id, entity.getId());
-        assertEquals(customerId, entity.getCustomerId());
+        assertEquals(merchantId, entity.getMerchantId());
         assertEquals(350000L, entity.getAmount());
         assertEquals(Currency.COP, entity.getCurrency());
         assertEquals(PaymentStatus.APPROVED, entity.getStatus());
@@ -81,12 +81,12 @@ class PaymentMapperTest {
     @Test
     void shouldMapPaymentEntityWithVersionToPaymentPreservingAllFields() {
         UUID id = UUID.randomUUID();
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-09-28T15:00:00Z");
 
         PaymentEntity entity = new PaymentEntity(
                 id,
-                customerId,
+                merchantId,
                 5000L,
                 Currency.USD,
                 PaymentStatus.APPROVED,
@@ -98,7 +98,7 @@ class PaymentMapperTest {
         Payment payment = mapper.toDomain(entity);
 
         assertEquals(id, payment.getId());
-        assertEquals(customerId, payment.getCustomerId());
+        assertEquals(merchantId, payment.getMerchantId());
         assertEquals(5000L, payment.getAmount());
         assertEquals(Currency.USD, payment.getCurrency());
         assertEquals(PaymentStatus.APPROVED, payment.getStatus());
@@ -110,12 +110,12 @@ class PaymentMapperTest {
     @Test
     void shouldPerformRoundTripMappingWithoutLossOfInformationForDeclinedStatusAndVersion() {
         UUID id = UUID.randomUUID();
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-09-28T16:00:00Z");
 
         Payment originalPayment = Payment.reconstitute(
                 id,
-                customerId,
+                merchantId,
                 120000L,
                 Currency.COP,
                 PaymentStatus.DECLINED,
@@ -128,7 +128,7 @@ class PaymentMapperTest {
         Payment roundTripPayment = mapper.toDomain(intermediateEntity);
 
         assertEquals(originalPayment.getId(), roundTripPayment.getId());
-        assertEquals(originalPayment.getCustomerId(), roundTripPayment.getCustomerId());
+        assertEquals(originalPayment.getMerchantId(), roundTripPayment.getMerchantId());
         assertEquals(originalPayment.getAmount(), roundTripPayment.getAmount());
         assertEquals(originalPayment.getCurrency(), roundTripPayment.getCurrency());
         assertEquals(originalPayment.getStatus(), roundTripPayment.getStatus());

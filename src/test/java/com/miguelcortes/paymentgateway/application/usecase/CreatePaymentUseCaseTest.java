@@ -42,9 +42,9 @@ class CreatePaymentUseCaseTest {
 
     @Test
     void shouldCreateAndSaveNewPaymentWhenItDoesNotExist() {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         CreatePaymentCommand command = new CreatePaymentCommand(
-                customerId,
+                merchantId,
                 150000L,
                 Currency.COP,
                 "req-1001"
@@ -53,7 +53,7 @@ class CreatePaymentUseCaseTest {
         Payment createdPayment = useCase.execute(command);
 
         assertEquals(FIXED_ID, createdPayment.getId());
-        assertEquals(customerId, createdPayment.getCustomerId());
+        assertEquals(merchantId, createdPayment.getMerchantId());
         assertEquals(150000L, createdPayment.getAmount());
         assertEquals(Currency.COP, createdPayment.getCurrency());
         assertEquals("req-1001", createdPayment.getIdempotencyKey());
@@ -68,12 +68,12 @@ class CreatePaymentUseCaseTest {
 
     @Test
     void shouldReturnExistingPaymentWhenSamePayloadIsProvided() {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "req-1002";
 
         Payment existingPayment = new Payment(
                 UUID.randomUUID(),
-                customerId,
+                merchantId,
                 200000L,
                 Currency.COP,
                 idempotencyKey,
@@ -82,7 +82,7 @@ class CreatePaymentUseCaseTest {
         fakeRepository.seed(existingPayment);
 
         CreatePaymentCommand command = new CreatePaymentCommand(
-                customerId,
+                merchantId,
                 200000L,
                 Currency.COP,
                 idempotencyKey
@@ -98,12 +98,12 @@ class CreatePaymentUseCaseTest {
 
     @Test
     void shouldThrowExceptionWhenExistingPaymentHasDifferentAmount() {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "req-1003";
 
         Payment existingPayment = new Payment(
                 UUID.randomUUID(),
-                customerId,
+                merchantId,
                 50000L,
                 Currency.USD,
                 idempotencyKey,
@@ -112,7 +112,7 @@ class CreatePaymentUseCaseTest {
         fakeRepository.seed(existingPayment);
 
         CreatePaymentCommand commandWithDifferentAmount = new CreatePaymentCommand(
-                customerId,
+                merchantId,
                 99999L,
                 Currency.USD,
                 idempotencyKey
@@ -131,12 +131,12 @@ class CreatePaymentUseCaseTest {
 
     @Test
     void shouldThrowExceptionWhenExistingPaymentHasDifferentCurrency() {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "req-1004";
 
         Payment existingPayment = new Payment(
                 UUID.randomUUID(),
-                customerId,
+                merchantId,
                 1000L,
                 Currency.USD,
                 idempotencyKey,
@@ -145,7 +145,7 @@ class CreatePaymentUseCaseTest {
         fakeRepository.seed(existingPayment);
 
         CreatePaymentCommand commandWithDifferentCurrency = new CreatePaymentCommand(
-                customerId,
+                merchantId,
                 1000L,
                 Currency.COP,
                 idempotencyKey
@@ -164,12 +164,12 @@ class CreatePaymentUseCaseTest {
 
     @Test
     void shouldRecoverAndReturnExistingPaymentWhenConcurrentInsertThrowsDuplicateKeyWithSamePayload() {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "req-1005";
 
         Payment concurrentWinner = new Payment(
                 UUID.randomUUID(),
-                customerId,
+                merchantId,
                 150000L,
                 Currency.COP,
                 idempotencyKey,
@@ -179,7 +179,7 @@ class CreatePaymentUseCaseTest {
         fakeRepository.simulateConcurrentDuplicateOnSave(concurrentWinner);
 
         CreatePaymentCommand command = new CreatePaymentCommand(
-                customerId,
+                merchantId,
                 150000L,
                 Currency.COP,
                 idempotencyKey
@@ -195,12 +195,12 @@ class CreatePaymentUseCaseTest {
 
     @Test
     void shouldThrowIdempotencyConflictWhenConcurrentInsertThrowsDuplicateKeyWithDifferentPayload() {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "req-1006";
 
         Payment concurrentWinner = new Payment(
                 UUID.randomUUID(),
-                customerId,
+                merchantId,
                 150000L,
                 Currency.COP,
                 idempotencyKey,
@@ -210,7 +210,7 @@ class CreatePaymentUseCaseTest {
         fakeRepository.simulateConcurrentDuplicateOnSave(concurrentWinner);
 
         CreatePaymentCommand commandWithDifferentAmount = new CreatePaymentCommand(
-                customerId,
+                merchantId,
                 200000L,
                 Currency.COP,
                 idempotencyKey
@@ -234,7 +234,7 @@ class CreatePaymentUseCaseTest {
         private Payment concurrentWinnerToInjectOnSave;
 
         void seed(Payment payment) {
-            storage.put(key(payment.getCustomerId(), payment.getIdempotencyKey()), payment);
+            storage.put(key(payment.getMerchantId(), payment.getIdempotencyKey()), payment);
         }
 
         void simulateConcurrentDuplicateOnSave(Payment winner) {
@@ -251,7 +251,7 @@ class CreatePaymentUseCaseTest {
                 concurrentWinnerToInjectOnSave = null;
                 throw new DuplicateIdempotencyKeyException("Duplicate key violation for: " + winner.getIdempotencyKey());
             }
-            storage.put(key(payment.getCustomerId(), payment.getIdempotencyKey()), payment);
+            storage.put(key(payment.getMerchantId(), payment.getIdempotencyKey()), payment);
         }
 
         @Override
@@ -262,12 +262,12 @@ class CreatePaymentUseCaseTest {
         }
 
         @Override
-        public Optional<Payment> findByCustomerIdAndIdempotencyKey(UUID customerId, String idempotencyKey) {
-            return Optional.ofNullable(storage.get(key(customerId, idempotencyKey)));
+        public Optional<Payment> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey) {
+            return Optional.ofNullable(storage.get(key(merchantId, idempotencyKey)));
         }
 
-        private String key(UUID customerId, String idempotencyKey) {
-            return customerId + ":" + idempotencyKey;
+        private String key(UUID merchantId, String idempotencyKey) {
+            return merchantId + ":" + idempotencyKey;
         }
     }
 

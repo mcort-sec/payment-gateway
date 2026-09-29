@@ -30,7 +30,7 @@ public class CreatePaymentUseCase {
 
     public Payment execute(CreatePaymentCommand command) {
         Optional<Payment> existingPayment = paymentRepositoryPort
-                .findByCustomerIdAndIdempotencyKey(command.customerId(), command.idempotencyKey());
+                .findByMerchantIdAndIdempotencyKey(command.merchantId(), command.idempotencyKey());
 
         if (existingPayment.isPresent()) {
             Payment payment = existingPayment.get();
@@ -43,7 +43,7 @@ public class CreatePaymentUseCase {
 
         Payment newPayment = new Payment(
                 id,
-                command.customerId(),
+                command.merchantId(),
                 command.amount(),
                 command.currency(),
                 command.idempotencyKey(),
@@ -55,7 +55,7 @@ public class CreatePaymentUseCase {
             return newPayment;
         } catch (DuplicateIdempotencyKeyException ex) {
             Payment concurrentWinner = paymentRepositoryPort
-                    .findByCustomerIdAndIdempotencyKey(command.customerId(), command.idempotencyKey())
+                    .findByMerchantIdAndIdempotencyKey(command.merchantId(), command.idempotencyKey())
                     .orElseThrow(() -> ex);
 
             validateIdempotencyPayload(concurrentWinner, command);

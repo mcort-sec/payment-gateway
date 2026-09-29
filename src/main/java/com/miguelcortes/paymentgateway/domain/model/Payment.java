@@ -7,7 +7,7 @@ import java.util.UUID;
 
 public class Payment {
     private final UUID id;
-    private final UUID customerId;
+    private final UUID merchantId;
     private final long amount;
     private final Currency currency;
     private PaymentStatus status;
@@ -17,18 +17,18 @@ public class Payment {
 
     public Payment(
             UUID id,
-            UUID customerId,
+            UUID merchantId,
             long amount,
             Currency currency,
             String idempotencyKey,
             Instant createdAt
     ) {
-        this(id, customerId, amount, currency, PaymentStatus.PENDING, idempotencyKey, createdAt, null);
+        this(id, merchantId, amount, currency, PaymentStatus.PENDING, idempotencyKey, createdAt, null);
     }
 
     private Payment(
             UUID id,
-            UUID customerId,
+            UUID merchantId,
             long amount,
             Currency currency,
             PaymentStatus status,
@@ -39,8 +39,8 @@ public class Payment {
         if (id == null) {
             throw new InvalidPaymentException("Payment ID cannot be null");
         }
-        if (customerId == null) {
-            throw new InvalidPaymentException("Customer ID cannot be null");
+        if (merchantId == null) {
+            throw new InvalidPaymentException("Merchant ID cannot be null");
         }
         if (amount <= 0) {
             throw new InvalidPaymentException("Amount must be greater than 0");
@@ -59,7 +59,7 @@ public class Payment {
         }
 
         this.id = id;
-        this.customerId = customerId;
+        this.merchantId = merchantId;
         this.amount = amount;
         this.currency = currency;
         this.status = status;
@@ -70,7 +70,7 @@ public class Payment {
 
     public static Payment reconstitute(
             UUID id,
-            UUID customerId,
+            UUID merchantId,
             long amount,
             Currency currency,
             PaymentStatus status,
@@ -81,7 +81,7 @@ public class Payment {
         if (version == null) {
             throw new InvalidPaymentException("Persisted payment must have a version");
         }
-        return new Payment(id, customerId, amount, currency, status, idempotencyKey, createdAt, version);
+        return new Payment(id, merchantId, amount, currency, status, idempotencyKey, createdAt, version);
     }
 
     public void approve() {
@@ -111,8 +111,8 @@ public class Payment {
         return id;
     }
 
-    public UUID getCustomerId() {
-        return customerId;
+    public UUID getMerchantId() {
+        return merchantId;
     }
 
     public long getAmount() {

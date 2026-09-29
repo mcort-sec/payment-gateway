@@ -62,13 +62,13 @@ class PaymentIdempotencyConcurrencyIntegrationTest {
     @Test
     @DisplayName("Concurrent requests with same payload: both threads receive identical Payment and only 1 row is created")
     void shouldHandleConcurrentRequestsWithSamePayloadAndPersistSinglePayment() throws Exception {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "concurrent-same-payload-1";
         long amount = 100000L;
         Currency currency = Currency.COP;
 
-        CreatePaymentCommand command1 = new CreatePaymentCommand(customerId, amount, currency, idempotencyKey);
-        CreatePaymentCommand command2 = new CreatePaymentCommand(customerId, amount, currency, idempotencyKey);
+        CreatePaymentCommand command1 = new CreatePaymentCommand(merchantId, amount, currency, idempotencyKey);
+        CreatePaymentCommand command2 = new CreatePaymentCommand(merchantId, amount, currency, idempotencyKey);
 
         ConcurrentBarrierPaymentRepositoryDecorator barrierAdapter =
                 new ConcurrentBarrierPaymentRepositoryDecorator(realAdapter, 2);
@@ -86,14 +86,14 @@ class PaymentIdempotencyConcurrencyIntegrationTest {
             assertThat(payment1).isNotNull();
             assertThat(payment2).isNotNull();
             assertThat(payment1.getId()).isEqualTo(payment2.getId());
-            assertThat(payment1.getCustomerId()).isEqualTo(customerId);
+            assertThat(payment1.getMerchantId()).isEqualTo(merchantId);
             assertThat(payment1.getAmount()).isEqualTo(amount);
             assertThat(payment1.getCurrency()).isEqualTo(currency);
             assertThat(payment1.getIdempotencyKey()).isEqualTo(idempotencyKey);
             assertThat(payment1.getCreatedAt()).isEqualTo(payment2.getCreatedAt());
 
             assertThat(springDataPaymentRepository.count()).isEqualTo(1L);
-            Optional<PaymentEntity> entity = springDataPaymentRepository.findByCustomerIdAndIdempotencyKey(customerId, idempotencyKey);
+            Optional<PaymentEntity> entity = springDataPaymentRepository.findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey);
             assertThat(entity).isPresent();
             assertThat(entity.get().getId()).isEqualTo(payment1.getId());
         } finally {
@@ -104,11 +104,11 @@ class PaymentIdempotencyConcurrencyIntegrationTest {
     @Test
     @DisplayName("Concurrent requests with conflicting payload: one thread succeeds, one fails with IdempotencyConflictException, and only 1 row is created")
     void shouldHandleConcurrentRequestsWithConflictingPayloadAndThrowConflictException() throws Exception {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "concurrent-diff-payload-1";
 
-        CreatePaymentCommand command1 = new CreatePaymentCommand(customerId, 50000L, Currency.USD, idempotencyKey);
-        CreatePaymentCommand command2 = new CreatePaymentCommand(customerId, 99000L, Currency.USD, idempotencyKey);
+        CreatePaymentCommand command1 = new CreatePaymentCommand(merchantId, 50000L, Currency.USD, idempotencyKey);
+        CreatePaymentCommand command2 = new CreatePaymentCommand(merchantId, 99000L, Currency.USD, idempotencyKey);
 
         ConcurrentBarrierPaymentRepositoryDecorator barrierAdapter =
                 new ConcurrentBarrierPaymentRepositoryDecorator(realAdapter, 2);
@@ -144,7 +144,7 @@ class PaymentIdempotencyConcurrencyIntegrationTest {
             assertThat(successfulPayment).isNotNull();
 
             assertThat(springDataPaymentRepository.count()).isEqualTo(1L);
-            Optional<PaymentEntity> entity = springDataPaymentRepository.findByCustomerIdAndIdempotencyKey(customerId, idempotencyKey);
+            Optional<PaymentEntity> entity = springDataPaymentRepository.findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey);
             assertThat(entity).isPresent();
             assertThat(entity.get().getId()).isEqualTo(successfulPayment.getId());
             assertThat(entity.get().getAmount()).isEqualTo(successfulPayment.getAmount());
@@ -165,8 +165,8 @@ class PaymentIdempotencyConcurrencyIntegrationTest {
         }
 
         @Override
-        public Optional<Payment> findByCustomerIdAndIdempotencyKey(UUID customerId, String idempotencyKey) {
-            Optional<Payment> result = delegate.findByCustomerIdAndIdempotencyKey(customerId, idempotencyKey);
+        public Optional<Payment> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey) {
+            Optional<Payment> result = delegate.findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey);
 
             int call = precheckCounter.incrementAndGet();
             if (call <= 2 && result.isEmpty()) {

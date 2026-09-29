@@ -53,18 +53,18 @@ class PaymentCreationEndToEndTest {
     @Test
     @DisplayName("1. Full flow: POST /payments persists new payment in real PostgreSQL and returns 201 Created")
     void shouldCreateAndPersistPaymentSuccessfully() throws Exception {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "e2e-create-key-1";
         long amount = 75000L;
         Currency currency = Currency.COP;
 
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": %d,
                     "currency": "%s"
                 }
-                """.formatted(customerId, amount, currency);
+                """.formatted(merchantId, amount, currency);
 
         MvcResult result = mockMvc.perform(post("/payments")
                         .header("Idempotency-Key", idempotencyKey)
@@ -73,7 +73,7 @@ class PaymentCreationEndToEndTest {
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", notNullValue()))
                 .andExpect(jsonPath("$.id").value(notNullValue()))
-                .andExpect(jsonPath("$.customerId").value(customerId.toString()))
+                .andExpect(jsonPath("$.merchantId").value(merchantId.toString()))
                 .andExpect(jsonPath("$.amount").value(amount))
                 .andExpect(jsonPath("$.currency").value(currency.name()))
                 .andExpect(jsonPath("$.status").value(PaymentStatus.PENDING.name()))
@@ -99,7 +99,7 @@ class PaymentCreationEndToEndTest {
 
         PaymentEntity entity = persistedEntity.get();
         assertThat(entity.getId()).isEqualTo(generatedId);
-        assertThat(entity.getCustomerId()).isEqualTo(customerId);
+        assertThat(entity.getMerchantId()).isEqualTo(merchantId);
         assertThat(entity.getAmount()).isEqualTo(amount);
         assertThat(entity.getCurrency()).isEqualTo(currency);
         assertThat(entity.getStatus()).isEqualTo(PaymentStatus.PENDING);
@@ -110,18 +110,18 @@ class PaymentCreationEndToEndTest {
     @Test
     @DisplayName("2. Idempotency replay: repeated identical POST /payments returns the same payment and creates no duplicate rows")
     void shouldHandleIdempotentReplayWithoutCreatingDuplicateRows() throws Exception {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "e2e-replay-key-1";
         long amount = 120000L;
         Currency currency = Currency.USD;
 
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": %d,
                     "currency": "%s"
                 }
-                """.formatted(customerId, amount, currency);
+                """.formatted(merchantId, amount, currency);
 
         // First request
         MvcResult firstResult = mockMvc.perform(post("/payments")
@@ -153,7 +153,7 @@ class PaymentCreationEndToEndTest {
 
         // Assert database has exactly 1 row
         assertThat(paymentRepository.count()).isEqualTo(1L);
-        Optional<PaymentEntity> persisted = paymentRepository.findByCustomerIdAndIdempotencyKey(customerId, idempotencyKey);
+        Optional<PaymentEntity> persisted = paymentRepository.findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey);
         assertThat(persisted).isPresent();
         assertThat(persisted.get().getId()).isEqualTo(firstId);
     }
@@ -161,24 +161,24 @@ class PaymentCreationEndToEndTest {
     @Test
     @DisplayName("3. Idempotency conflict: POST /payments with same Idempotency-Key but different payload returns 409 Conflict")
     void shouldReturn409ConflictWhenPayloadDiffersForSameIdempotencyKey() throws Exception {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "e2e-conflict-key-1";
 
         String firstPayload = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": 50000,
                     "currency": "COP"
                 }
-                """.formatted(customerId);
+                """.formatted(merchantId);
 
         String conflictingPayload = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": 90000,
                     "currency": "COP"
                 }
-                """.formatted(customerId);
+                """.formatted(merchantId);
 
         // 1. First request succeeds
         mockMvc.perform(post("/payments")
@@ -210,18 +210,18 @@ class PaymentCreationEndToEndTest {
     @Test
     @DisplayName("4. Create and retrieve: POST /payments followed by GET /payments/{id} returns the same payment")
     void shouldCreatePaymentAndRetrieveItByIdSuccessfully() throws Exception {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "e2e-get-key-1";
         long amount = 65000L;
         Currency currency = Currency.COP;
 
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": %d,
                     "currency": "%s"
                 }
-                """.formatted(customerId, amount, currency);
+                """.formatted(merchantId, amount, currency);
 
         // 1. POST /payments
         MvcResult createResult = mockMvc.perform(post("/payments")
@@ -239,7 +239,7 @@ class PaymentCreationEndToEndTest {
         mockMvc.perform(get("/payments/{id}", createdId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(createdId.toString()))
-                .andExpect(jsonPath("$.customerId").value(customerId.toString()))
+                .andExpect(jsonPath("$.merchantId").value(merchantId.toString()))
                 .andExpect(jsonPath("$.amount").value(amount))
                 .andExpect(jsonPath("$.currency").value(currency.name()))
                 .andExpect(jsonPath("$.status").value(PaymentStatus.PENDING.name()))
@@ -249,25 +249,25 @@ class PaymentCreationEndToEndTest {
         Optional<PaymentEntity> entity = paymentRepository.findById(createdId);
         assertThat(entity).isPresent();
         assertThat(entity.get().getId()).isEqualTo(createdId);
-        assertThat(entity.get().getCustomerId()).isEqualTo(customerId);
+        assertThat(entity.get().getMerchantId()).isEqualTo(merchantId);
         assertThat(entity.get().getAmount()).isEqualTo(amount);
     }
 
     @Test
     @DisplayName("5. Approve payment flow: POST /payments -> POST /payments/{id}/approve -> GET /payments/{id} and subsequent approval conflict")
     void shouldApprovePaymentAndPreventSubsequentApprovalTransitions() throws Exception {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "e2e-approve-key-1";
         long amount = 150000L;
         Currency currency = Currency.COP;
 
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": %d,
                     "currency": "%s"
                 }
-                """.formatted(customerId, amount, currency);
+                """.formatted(merchantId, amount, currency);
 
         // 1. POST /payments -> Creates PENDING payment
         MvcResult createResult = mockMvc.perform(post("/payments")
@@ -314,18 +314,18 @@ class PaymentCreationEndToEndTest {
     @Test
     @DisplayName("6. Decline payment flow: POST /payments -> POST /payments/{id}/decline -> GET /payments/{id} and subsequent decline conflict")
     void shouldDeclinePaymentAndPreventSubsequentDeclineTransitions() throws Exception {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "e2e-decline-key-1";
         long amount = 45000L;
         Currency currency = Currency.COP;
 
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": %d,
                     "currency": "%s"
                 }
-                """.formatted(customerId, amount, currency);
+                """.formatted(merchantId, amount, currency);
 
         // 1. POST /payments -> Creates PENDING payment
         MvcResult createResult = mockMvc.perform(post("/payments")
@@ -372,18 +372,18 @@ class PaymentCreationEndToEndTest {
     @Test
     @DisplayName("7. Cancel payment flow: POST /payments -> POST /payments/{id}/cancel -> GET /payments/{id} and subsequent cancel conflict")
     void shouldCancelPaymentAndPreventSubsequentCancelTransitions() throws Exception {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "e2e-cancel-key-1";
         long amount = 85000L;
         Currency currency = Currency.USD;
 
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": %d,
                     "currency": "%s"
                 }
-                """.formatted(customerId, amount, currency);
+                """.formatted(merchantId, amount, currency);
 
         // 1. POST /payments -> Creates PENDING payment
         MvcResult createResult = mockMvc.perform(post("/payments")
@@ -430,18 +430,18 @@ class PaymentCreationEndToEndTest {
     @Test
     @DisplayName("8. Cross-state conflict: Approved payment cannot be cancelled and remains APPROVED")
     void shouldPreventCancellingAlreadyApprovedPayment() throws Exception {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "e2e-cross-key-1";
         long amount = 110000L;
         Currency currency = Currency.COP;
 
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": %d,
                     "currency": "%s"
                 }
-                """.formatted(customerId, amount, currency);
+                """.formatted(merchantId, amount, currency);
 
         // 1. POST /payments -> Creates PENDING payment
         MvcResult createResult = mockMvc.perform(post("/payments")

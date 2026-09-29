@@ -39,15 +39,15 @@ class PaymentPersistenceAdapterIntegrationTest {
     private PaymentPersistenceAdapter adapter;
 
     @Test
-    void shouldSaveAndRetrieveNewPaymentByIdAndByCustomerAndIdempotencyKey() {
+    void shouldSaveAndRetrieveNewPaymentByIdAndByMerchantAndIdempotencyKey() {
         UUID id = UUID.randomUUID();
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "req-it-001";
         Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
 
         Payment newPayment = new Payment(
                 id,
-                customerId,
+                merchantId,
                 150000L,
                 Currency.COP,
                 idempotencyKey,
@@ -60,7 +60,7 @@ class PaymentPersistenceAdapterIntegrationTest {
         assertTrue(byId.isPresent());
         Payment savedById = byId.get();
         assertEquals(id, savedById.getId());
-        assertEquals(customerId, savedById.getCustomerId());
+        assertEquals(merchantId, savedById.getMerchantId());
         assertEquals(150000L, savedById.getAmount());
         assertEquals(Currency.COP, savedById.getCurrency());
         assertEquals(PaymentStatus.PENDING, savedById.getStatus());
@@ -68,9 +68,9 @@ class PaymentPersistenceAdapterIntegrationTest {
         assertEquals(createdAt, savedById.getCreatedAt());
         assertEquals(0L, savedById.getVersion());
 
-        Optional<Payment> byCustomerAndKey = adapter.findByCustomerIdAndIdempotencyKey(customerId, idempotencyKey);
-        assertTrue(byCustomerAndKey.isPresent());
-        Payment savedByKey = byCustomerAndKey.get();
+        Optional<Payment> byMerchantAndKey = adapter.findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey);
+        assertTrue(byMerchantAndKey.isPresent());
+        Payment savedByKey = byMerchantAndKey.get();
         assertEquals(id, savedByKey.getId());
         assertEquals(PaymentStatus.PENDING, savedByKey.getStatus());
         assertEquals(0L, savedByKey.getVersion());
@@ -79,13 +79,13 @@ class PaymentPersistenceAdapterIntegrationTest {
     @Test
     void shouldIncrementVersionWhenUpdatingExistingPaymentState() {
         UUID id = UUID.randomUUID();
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "req-it-version-inc";
         Instant createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
 
         Payment newPayment = new Payment(
                 id,
-                customerId,
+                merchantId,
                 50000L,
                 Currency.USD,
                 idempotencyKey,
@@ -108,12 +108,12 @@ class PaymentPersistenceAdapterIntegrationTest {
 
     @Test
     void shouldTranslatePostgresUniqueConstraintToDuplicateIdempotencyKeyException() {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "req-it-duplicate";
 
         Payment payment1 = new Payment(
                 UUID.randomUUID(),
-                customerId,
+                merchantId,
                 100000L,
                 Currency.COP,
                 idempotencyKey,
@@ -122,7 +122,7 @@ class PaymentPersistenceAdapterIntegrationTest {
 
         Payment payment2WithSameKey = new Payment(
                 UUID.randomUUID(),
-                customerId,
+                merchantId,
                 200000L,
                 Currency.COP,
                 idempotencyKey,

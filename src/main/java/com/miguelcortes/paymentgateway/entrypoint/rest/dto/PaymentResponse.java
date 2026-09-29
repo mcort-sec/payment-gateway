@@ -9,7 +9,7 @@ import java.util.UUID;
 
 public record PaymentResponse(
         UUID id,
-        UUID customerId,
+        UUID merchantId,
         long amount,
         Currency currency,
         PaymentStatus status,
@@ -18,7 +18,7 @@ public record PaymentResponse(
     public static PaymentResponse fromDomain(Payment payment) {
         return new PaymentResponse(
                 payment.getId(),
-                payment.getCustomerId(),
+                payment.getMerchantId(),
                 payment.getAmount(),
                 payment.getCurrency(),
                 payment.getStatus(),

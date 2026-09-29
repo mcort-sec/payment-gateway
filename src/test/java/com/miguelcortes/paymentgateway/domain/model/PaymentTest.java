@@ -16,16 +16,16 @@ class PaymentTest {
     @Test
     void shouldCreateValidPaymentWithPendingStatusAndRetainValues() {
         UUID id = UUID.randomUUID();
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         long amount = 150000L;
         Currency currency = Currency.COP;
         String idempotencyKey = "req-12345";
         Instant createdAt = Instant.now();
 
-        Payment payment = new Payment(id, customerId, amount, currency, idempotencyKey, createdAt);
+        Payment payment = new Payment(id, merchantId, amount, currency, idempotencyKey, createdAt);
 
         assertEquals(id, payment.getId());
-        assertEquals(customerId, payment.getCustomerId());
+        assertEquals(merchantId, payment.getMerchantId());
         assertEquals(amount, payment.getAmount());
         assertEquals(currency, payment.getCurrency());
         assertEquals(PaymentStatus.PENDING, payment.getStatus());
@@ -52,7 +52,7 @@ class PaymentTest {
     }
 
     @Test
-    void shouldThrowExceptionWhenCustomerIdIsNull() {
+    void shouldThrowExceptionWhenMerchantIdIsNull() {
         InvalidPaymentException exception = assertThrows(
                 InvalidPaymentException.class,
                 () -> new Payment(
@@ -65,7 +65,7 @@ class PaymentTest {
                 )
         );
 
-        assertEquals("Customer ID cannot be null", exception.getMessage());
+        assertEquals("Merchant ID cannot be null", exception.getMessage());
     }
 
     @Test
@@ -256,12 +256,12 @@ class PaymentTest {
     @Test
     void shouldReconstitutePaymentWithApprovedStatusAndVersion() {
         UUID id = UUID.randomUUID();
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-09-28T08:00:00Z");
 
         Payment payment = Payment.reconstitute(
                 id,
-                customerId,
+                merchantId,
                 250000L,
                 Currency.COP,
                 PaymentStatus.APPROVED,
@@ -271,7 +271,7 @@ class PaymentTest {
         );
 
         assertEquals(id, payment.getId());
-        assertEquals(customerId, payment.getCustomerId());
+        assertEquals(merchantId, payment.getMerchantId());
         assertEquals(250000L, payment.getAmount());
         assertEquals(Currency.COP, payment.getCurrency());
         assertEquals(PaymentStatus.APPROVED, payment.getStatus());

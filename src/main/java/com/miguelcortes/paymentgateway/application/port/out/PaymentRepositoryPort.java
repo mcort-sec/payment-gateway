@@ -11,5 +11,5 @@ public interface PaymentRepositoryPort {
 
     Optional<Payment> findById(UUID id);
 
-    Optional<Payment> findByCustomerIdAndIdempotencyKey(UUID customerId, String idempotencyKey);
+    Optional<Payment> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey);
 }

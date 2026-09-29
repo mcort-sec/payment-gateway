@@ -25,8 +25,8 @@ public class PaymentEntity {
     @Column(name = "version", nullable = false)
     private Long version;
 
-    @Column(name = "customer_id", nullable = false, updatable = false)
-    private UUID customerId;
+    @Column(name = "merchant_id", nullable = false, updatable = false)
+    private UUID merchantId;
 
     @Column(name = "amount", nullable = false)
     private long amount;
@@ -50,7 +50,7 @@ public class PaymentEntity {
 
     public PaymentEntity(
             UUID id,
-            UUID customerId,
+            UUID merchantId,
             long amount,
             Currency currency,
             PaymentStatus status,
@@ -59,7 +59,7 @@ public class PaymentEntity {
             Long version
     ) {
         this.id = id;
-        this.customerId = customerId;
+        this.merchantId = merchantId;
         this.amount = amount;
         this.currency = currency;
         this.status = status;
@@ -76,8 +76,8 @@ public class PaymentEntity {
         return version;
     }
 
-    public UUID getCustomerId() {
-        return customerId;
+    public UUID getMerchantId() {
+        return merchantId;
     }
 
     public long getAmount() {

@@ -64,13 +64,13 @@ class PaymentControllerTest {
     @DisplayName("Should create payment successfully and return 201 with Location header and body")
     void shouldCreatePaymentSuccessfully() throws Exception {
         UUID paymentId = UUID.randomUUID();
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-09-28T20:00:00Z");
         String idempotencyKey = "req-test-123";
 
         Payment mockPayment = Payment.reconstitute(
                 paymentId,
-                customerId,
+                merchantId,
                 50000L,
                 Currency.COP,
                 PaymentStatus.PENDING,
@@ -83,11 +83,11 @@ class PaymentControllerTest {
 
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": 50000,
                     "currency": "COP"
                 }
-                """.formatted(customerId);
+                """.formatted(merchantId);
 
         mockMvc.perform(post("/payments")
                         .header("Idempotency-Key", idempotencyKey)
@@ -96,14 +96,14 @@ class PaymentControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", endsWith("/payments/" + paymentId)))
                 .andExpect(jsonPath("$.id").value(paymentId.toString()))
-                .andExpect(jsonPath("$.customerId").value(customerId.toString()))
+                .andExpect(jsonPath("$.merchantId").value(merchantId.toString()))
                 .andExpect(jsonPath("$.amount").value(50000))
                 .andExpect(jsonPath("$.currency").value("COP"))
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.createdAt").value("2026-09-28T20:00:00Z"));
 
         verify(createPaymentUseCase).execute(new CreatePaymentCommand(
-                customerId,
+                merchantId,
                 50000L,
                 Currency.COP,
                 idempotencyKey
@@ -115,7 +115,7 @@ class PaymentControllerTest {
     void shouldReturn400WhenIdempotencyKeyHeaderIsMissing() throws Exception {
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": 50000,
                     "currency": "COP"
                 }
@@ -139,7 +139,7 @@ class PaymentControllerTest {
     void shouldReturn400WhenIdempotencyKeyHeaderIsBlank() throws Exception {
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": 50000,
                     "currency": "COP"
                 }
@@ -164,7 +164,7 @@ class PaymentControllerTest {
         String tooLongKey = "a".repeat(65);
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": 50000,
                     "currency": "COP"
                 }
@@ -188,7 +188,7 @@ class PaymentControllerTest {
     void shouldReturn400WhenAmountIsZeroOrNegative() throws Exception {
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": 0,
                     "currency": "COP"
                 }
@@ -208,11 +208,11 @@ class PaymentControllerTest {
     }
 
     @Test
-    @DisplayName("Should return 400 when customerId is null")
-    void shouldReturn400WhenCustomerIdIsNull() throws Exception {
+    @DisplayName("Should return 400 when merchantId is null")
+    void shouldReturn400WhenMerchantIdIsNull() throws Exception {
         String requestJson = """
                 {
-                    "customerId": null,
+                    "merchantId": null,
                     "amount": 50000,
                     "currency": "COP"
                 }
@@ -236,7 +236,7 @@ class PaymentControllerTest {
     void shouldReturn400WhenCurrencyIsNull() throws Exception {
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": 50000,
                     "currency": null
                 }
@@ -260,7 +260,7 @@ class PaymentControllerTest {
     void shouldReturn400WhenCurrencyIsInvalid() throws Exception {
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": 50000,
                     "currency": "INVALID_CURRENCY"
                 }
@@ -282,7 +282,7 @@ class PaymentControllerTest {
     @Test
     @DisplayName("Should return 409 Conflict when use case throws IdempotencyConflictException")
     void shouldReturn409WhenUseCaseThrowsIdempotencyConflictException() throws Exception {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "conflicting-key";
 
         when(createPaymentUseCase.execute(any(CreatePaymentCommand.class)))
@@ -290,11 +290,11 @@ class PaymentControllerTest {
 
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": 50000,
                     "currency": "COP"
                 }
-                """.formatted(customerId);
+                """.formatted(merchantId);
 
         mockMvc.perform(post("/payments")
                         .header("Idempotency-Key", idempotencyKey)
@@ -311,7 +311,7 @@ class PaymentControllerTest {
     @Test
     @DisplayName("Should return 400 Bad Request when use case throws InvalidPaymentException")
     void shouldReturn400WhenUseCaseThrowsInvalidPaymentException() throws Exception {
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         String idempotencyKey = "invalid-payment-key";
 
         when(createPaymentUseCase.execute(any(CreatePaymentCommand.class)))
@@ -319,11 +319,11 @@ class PaymentControllerTest {
 
         String requestJson = """
                 {
-                    "customerId": "%s",
+                    "merchantId": "%s",
                     "amount": 50000,
                     "currency": "COP"
                 }
-                """.formatted(customerId);
+                """.formatted(merchantId);
 
         mockMvc.perform(post("/payments")
                         .header("Idempotency-Key", idempotencyKey)
@@ -341,12 +341,12 @@ class PaymentControllerTest {
     @DisplayName("Should return 200 OK and PaymentResponse when payment exists for GET /payments/{id}")
     void shouldReturn200WhenPaymentExists() throws Exception {
         UUID paymentId = UUID.randomUUID();
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-09-28T21:00:00Z");
 
         Payment mockPayment = Payment.reconstitute(
                 paymentId,
-                customerId,
+                merchantId,
                 80000L,
                 Currency.COP,
                 PaymentStatus.PENDING,
@@ -360,7 +360,7 @@ class PaymentControllerTest {
         mockMvc.perform(get("/payments/{id}", paymentId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(paymentId.toString()))
-                .andExpect(jsonPath("$.customerId").value(customerId.toString()))
+                .andExpect(jsonPath("$.merchantId").value(merchantId.toString()))
                 .andExpect(jsonPath("$.amount").value(80000))
                 .andExpect(jsonPath("$.currency").value("COP"))
                 .andExpect(jsonPath("$.status").value("PENDING"))
@@ -406,12 +406,12 @@ class PaymentControllerTest {
     @DisplayName("Should return 200 OK and APPROVED status when approving payment successfully")
     void shouldReturn200WhenApprovingPaymentSuccessfully() throws Exception {
         UUID paymentId = UUID.randomUUID();
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-09-28T21:00:00Z");
 
         Payment approvedPayment = Payment.reconstitute(
                 paymentId,
-                customerId,
+                merchantId,
                 50000L,
                 Currency.COP,
                 PaymentStatus.APPROVED,
@@ -425,7 +425,7 @@ class PaymentControllerTest {
         mockMvc.perform(post("/payments/{id}/approve", paymentId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(paymentId.toString()))
-                .andExpect(jsonPath("$.customerId").value(customerId.toString()))
+                .andExpect(jsonPath("$.merchantId").value(merchantId.toString()))
                 .andExpect(jsonPath("$.amount").value(50000))
                 .andExpect(jsonPath("$.currency").value("COP"))
                 .andExpect(jsonPath("$.status").value("APPROVED"))
@@ -490,12 +490,12 @@ class PaymentControllerTest {
     @DisplayName("Should return 200 OK and DECLINED status when declining payment successfully")
     void shouldReturn200WhenDecliningPaymentSuccessfully() throws Exception {
         UUID paymentId = UUID.randomUUID();
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-09-28T21:00:00Z");
 
         Payment declinedPayment = Payment.reconstitute(
                 paymentId,
-                customerId,
+                merchantId,
                 50000L,
                 Currency.COP,
                 PaymentStatus.DECLINED,
@@ -509,7 +509,7 @@ class PaymentControllerTest {
         mockMvc.perform(post("/payments/{id}/decline", paymentId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(paymentId.toString()))
-                .andExpect(jsonPath("$.customerId").value(customerId.toString()))
+                .andExpect(jsonPath("$.merchantId").value(merchantId.toString()))
                 .andExpect(jsonPath("$.amount").value(50000))
                 .andExpect(jsonPath("$.currency").value("COP"))
                 .andExpect(jsonPath("$.status").value("DECLINED"))
@@ -574,12 +574,12 @@ class PaymentControllerTest {
     @DisplayName("Should return 200 OK and CANCELLED status when cancelling payment successfully")
     void shouldReturn200WhenCancellingPaymentSuccessfully() throws Exception {
         UUID paymentId = UUID.randomUUID();
-        UUID customerId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-09-28T21:00:00Z");
 
         Payment cancelledPayment = Payment.reconstitute(
                 paymentId,
-                customerId,
+                merchantId,
                 50000L,
                 Currency.COP,
                 PaymentStatus.CANCELLED,
@@ -593,7 +593,7 @@ class PaymentControllerTest {
         mockMvc.perform(post("/payments/{id}/cancel", paymentId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(paymentId.toString()))
-                .andExpect(jsonPath("$.customerId").value(customerId.toString()))
+                .andExpect(jsonPath("$.merchantId").value(merchantId.toString()))
                 .andExpect(jsonPath("$.amount").value(50000))
                 .andExpect(jsonPath("$.currency").value("COP"))
                 .andExpect(jsonPath("$.status").value("CANCELLED"))

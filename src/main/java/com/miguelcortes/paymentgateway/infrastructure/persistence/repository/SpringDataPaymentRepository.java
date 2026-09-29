@@ -8,5 +8,5 @@ import java.util.UUID;
 
 public interface SpringDataPaymentRepository extends JpaRepository<PaymentEntity, UUID> {
 
-    Optional<PaymentEntity> findByCustomerIdAndIdempotencyKey(UUID customerId, String idempotencyKey);
+    Optional<PaymentEntity> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey);
 }

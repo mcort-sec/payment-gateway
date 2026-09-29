@@ -18,7 +18,7 @@ import java.util.UUID;
 @Component
 public class PaymentPersistenceAdapter implements PaymentRepositoryPort {
 
-    private static final String IDEMPOTENCY_CONSTRAINT = "uq_payments_customer_idempotency";
+    private static final String IDEMPOTENCY_CONSTRAINT = "uq_payments_merchant_idempotency";
 
     private final SpringDataPaymentRepository springDataRepository;
     private final PaymentMapper paymentMapper;
@@ -44,7 +44,7 @@ public class PaymentPersistenceAdapter implements PaymentRepositoryPort {
         } catch (DataIntegrityViolationException ex) {
             if (isIdempotencyConstraintViolation(ex)) {
                 throw new DuplicateIdempotencyKeyException(
-                        "Duplicate payment request for customer and idempotency key: " + payment.getIdempotencyKey(),
+                        "Duplicate payment request for merchant and idempotency key: " + payment.getIdempotencyKey(),
                         ex
                 );
             }
@@ -59,8 +59,8 @@ public class PaymentPersistenceAdapter implements PaymentRepositoryPort {
     }
 
     @Override
-    public Optional<Payment> findByCustomerIdAndIdempotencyKey(UUID customerId, String idempotencyKey) {
-        return springDataRepository.findByCustomerIdAndIdempotencyKey(customerId, idempotencyKey)
+    public Optional<Payment> findByMerchantIdAndIdempotencyKey(UUID merchantId, String idempotencyKey) {
+        return springDataRepository.findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey)
                 .map(paymentMapper::toDomain);
     }
 

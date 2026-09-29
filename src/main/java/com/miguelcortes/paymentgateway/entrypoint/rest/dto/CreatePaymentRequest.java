@@ -7,8 +7,8 @@ import jakarta.validation.constraints.Positive;
 import java.util.UUID;
 
 public record CreatePaymentRequest(
-        @NotNull(message = "Customer ID is required")
-        UUID customerId,
+        @NotNull(message = "Merchant ID is required")
+        UUID merchantId,
 
         @Positive(message = "Amount must be greater than 0")
         long amount,
