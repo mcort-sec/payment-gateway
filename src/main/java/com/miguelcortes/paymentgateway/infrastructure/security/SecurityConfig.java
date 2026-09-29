@@ -2,6 +2,7 @@ package com.miguelcortes.paymentgateway.infrastructure.security;
 
 import com.miguelcortes.paymentgateway.application.port.out.ApiCredentialRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.ApiKeyHasherPort;
+import com.miguelcortes.paymentgateway.application.port.out.ProcessorCredentialRepositoryPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -18,6 +19,7 @@ public class SecurityConfig {
 
     private final ApiKeyParser apiKeyParser;
     private final ApiCredentialRepositoryPort apiCredentialRepository;
+    private final ProcessorCredentialRepositoryPort processorCredentialRepository;
     private final ApiKeyHasherPort apiKeyHasher;
     private final ApiKeyAuthenticationEntryPoint authenticationEntryPoint;
     private final ApiAccessDeniedHandler accessDeniedHandler;
@@ -25,12 +27,14 @@ public class SecurityConfig {
     public SecurityConfig(
             ApiKeyParser apiKeyParser,
             ApiCredentialRepositoryPort apiCredentialRepository,
+            ProcessorCredentialRepositoryPort processorCredentialRepository,
             ApiKeyHasherPort apiKeyHasher,
             ApiKeyAuthenticationEntryPoint authenticationEntryPoint,
             ApiAccessDeniedHandler accessDeniedHandler
     ) {
         this.apiKeyParser = apiKeyParser;
         this.apiCredentialRepository = apiCredentialRepository;
+        this.processorCredentialRepository = processorCredentialRepository;
         this.apiKeyHasher = apiKeyHasher;
         this.authenticationEntryPoint = authenticationEntryPoint;
         this.accessDeniedHandler = accessDeniedHandler;
@@ -41,6 +45,7 @@ public class SecurityConfig {
         ApiKeyAuthenticationFilter apiKeyAuthenticationFilter = new ApiKeyAuthenticationFilter(
                 apiKeyParser,
                 apiCredentialRepository,
+                processorCredentialRepository,
                 apiKeyHasher,
                 authenticationEntryPoint
         );
@@ -53,11 +58,11 @@ public class SecurityConfig {
                         .accessDeniedHandler(accessDeniedHandler)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/payments").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/payments/*").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/payments/*/cancel").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/payments/*/approve").denyAll()
-                        .requestMatchers(HttpMethod.POST, "/payments/*/decline").denyAll()
+                        .requestMatchers(HttpMethod.POST, "/payments").hasAuthority("ROLE_MERCHANT")
+                        .requestMatchers(HttpMethod.GET, "/payments/*").hasAuthority("ROLE_MERCHANT")
+                        .requestMatchers(HttpMethod.POST, "/payments/*/cancel").hasAuthority("ROLE_MERCHANT")
+                        .requestMatchers(HttpMethod.POST, "/payments/*/approve").hasAuthority("ROLE_PROCESSOR")
+                        .requestMatchers(HttpMethod.POST, "/payments/*/decline").hasAuthority("ROLE_PROCESSOR")
                         .anyRequest().denyAll()
                 )
                 .addFilterBefore(apiKeyAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

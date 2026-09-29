@@ -2,8 +2,10 @@ package com.miguelcortes.paymentgateway.infrastructure.security;
 
 import com.miguelcortes.paymentgateway.application.port.out.ApiCredentialRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.ApiKeyHasherPort;
+import com.miguelcortes.paymentgateway.application.port.out.ProcessorCredentialRepositoryPort;
 import com.miguelcortes.paymentgateway.domain.model.ApiCredential;
 import com.miguelcortes.paymentgateway.domain.model.CredentialStatus;
+import com.miguelcortes.paymentgateway.domain.model.ProcessorCredential;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.io.IOException;
@@ -38,6 +41,9 @@ class ApiKeyAuthenticationFilterTest {
 
     @Mock
     private ApiCredentialRepositoryPort apiCredentialRepository;
+
+    @Mock
+    private ProcessorCredentialRepositoryPort processorCredentialRepository;
 
     @Mock
     private ApiKeyHasherPort apiKeyHasher;
@@ -64,6 +70,7 @@ class ApiKeyAuthenticationFilterTest {
         filter = new ApiKeyAuthenticationFilter(
                 apiKeyParser,
                 apiCredentialRepository,
+                processorCredentialRepository,
                 apiKeyHasher,
                 authenticationEntryPoint
         );
@@ -106,8 +113,8 @@ class ApiKeyAuthenticationFilterTest {
     }
 
     @Test
-    @DisplayName("Should reject and commence 401 when API key prefix is not found in repository")
-    void shouldRejectWhenPrefixNotFound() throws ServletException, IOException {
+    @DisplayName("Should reject and commence 401 when Merchant API key prefix is not found in repository")
+    void shouldRejectWhenMerchantPrefixNotFound() throws ServletException, IOException {
         String prefix = "abcdef123456";
         String rawKey = "pg_test_" + prefix + "_1234567890123456789012345678901234567890123";
         when(request.getHeader(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer " + rawKey);
@@ -121,8 +128,8 @@ class ApiKeyAuthenticationFilterTest {
     }
 
     @Test
-    @DisplayName("Should reject and commence 401 when API credential is REVOKED")
-    void shouldRejectWhenCredentialIsRevoked() throws ServletException, IOException {
+    @DisplayName("Should reject and commence 401 when Merchant API credential is REVOKED")
+    void shouldRejectWhenMerchantCredentialIsRevoked() throws ServletException, IOException {
         String prefix = "abcdef123456";
         String rawKey = "pg_test_" + prefix + "_1234567890123456789012345678901234567890123";
         ApiCredential revokedCredential = ApiCredential.reconstitute(
@@ -146,8 +153,8 @@ class ApiKeyAuthenticationFilterTest {
     }
 
     @Test
-    @DisplayName("Should reject and commence 401 when API key hash verification fails")
-    void shouldRejectWhenHashVerificationFails() throws ServletException, IOException {
+    @DisplayName("Should reject and commence 401 when Merchant API key hash verification fails")
+    void shouldRejectWhenMerchantHashVerificationFails() throws ServletException, IOException {
         String prefix = "abcdef123456";
         String rawKey = "pg_test_" + prefix + "_1234567890123456789012345678901234567890123";
         String expectedHash = "b".repeat(64);
@@ -171,8 +178,8 @@ class ApiKeyAuthenticationFilterTest {
     }
 
     @Test
-    @DisplayName("Should authenticate and set MerchantPrincipal in SecurityContext when API key is valid")
-    void shouldAuthenticateSuccessfullyWhenKeyIsValid() throws ServletException, IOException {
+    @DisplayName("Should authenticate and set MerchantPrincipal with ROLE_MERCHANT in SecurityContext when key is valid")
+    void shouldAuthenticateMerchantSuccessfullyWhenKeyIsValid() throws ServletException, IOException {
         String prefix = "abcdef123456";
         String rawKey = "pg_test_" + prefix + "_1234567890123456789012345678901234567890123";
         String expectedHash = "c".repeat(64);
@@ -200,9 +207,117 @@ class ApiKeyAuthenticationFilterTest {
         assertTrue(authentication instanceof ApiKeyAuthenticationToken);
         assertTrue(authentication.isAuthenticated());
         assertNull(authentication.getCredentials());
-        assertTrue(authentication.getAuthorities().isEmpty());
+        assertEquals(1, authentication.getAuthorities().size());
+        assertTrue(authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(a -> a.equals("ROLE_MERCHANT")));
 
         MerchantPrincipal principal = (MerchantPrincipal) authentication.getPrincipal();
         assertEquals(merchantId, principal.merchantId());
+    }
+
+    @Test
+    @DisplayName("Should authenticate and set ProcessorPrincipal with ROLE_PROCESSOR in SecurityContext when key is valid")
+    void shouldAuthenticateProcessorSuccessfullyWhenKeyIsValid() throws ServletException, IOException {
+        String prefix = "procpref0001";
+        String rawKey = "pg_proc_test_" + prefix + "_1234567890123456789012345678901234567890123";
+        String expectedHash = "d".repeat(64);
+        UUID processorId = UUID.randomUUID();
+
+        ProcessorCredential credential = new ProcessorCredential(
+                UUID.randomUUID(),
+                processorId,
+                prefix,
+                expectedHash,
+                Instant.now()
+        );
+
+        when(request.getHeader(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer " + rawKey);
+        when(processorCredentialRepository.findByKeyPrefix(prefix)).thenReturn(Optional.of(credential));
+        when(apiKeyHasher.verify(rawKey, expectedHash)).thenReturn(true);
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+        verify(authenticationEntryPoint, never()).commence(any(), any(), any());
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        assertNotNull(authentication);
+        assertTrue(authentication instanceof ApiKeyAuthenticationToken);
+        assertTrue(authentication.isAuthenticated());
+        assertNull(authentication.getCredentials());
+        assertEquals(1, authentication.getAuthorities().size());
+        assertTrue(authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(a -> a.equals("ROLE_PROCESSOR")));
+
+        ProcessorPrincipal principal = (ProcessorPrincipal) authentication.getPrincipal();
+        assertEquals(processorId, principal.processorId());
+    }
+
+    @Test
+    @DisplayName("Should reject and commence 401 when Processor API key prefix is not found in repository")
+    void shouldRejectWhenProcessorPrefixNotFound() throws ServletException, IOException {
+        String prefix = "procpref0002";
+        String rawKey = "pg_proc_test_" + prefix + "_1234567890123456789012345678901234567890123";
+        when(request.getHeader(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer " + rawKey);
+        when(processorCredentialRepository.findByKeyPrefix(prefix)).thenReturn(Optional.empty());
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(authenticationEntryPoint).commence(eq(request), eq(response), any());
+        verify(filterChain, never()).doFilter(any(), any());
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    @Test
+    @DisplayName("Should reject and commence 401 when Processor API credential is REVOKED")
+    void shouldRejectWhenProcessorCredentialIsRevoked() throws ServletException, IOException {
+        String prefix = "procpref0003";
+        String rawKey = "pg_proc_test_" + prefix + "_1234567890123456789012345678901234567890123";
+        ProcessorCredential revokedCredential = ProcessorCredential.reconstitute(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                prefix,
+                "e".repeat(64),
+                CredentialStatus.REVOKED,
+                Instant.now(),
+                Instant.now()
+        );
+
+        when(request.getHeader(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer " + rawKey);
+        when(processorCredentialRepository.findByKeyPrefix(prefix)).thenReturn(Optional.of(revokedCredential));
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(authenticationEntryPoint).commence(eq(request), eq(response), any());
+        verify(filterChain, never()).doFilter(any(), any());
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    @Test
+    @DisplayName("Should reject and commence 401 when Processor API key hash verification fails")
+    void shouldRejectWhenProcessorHashVerificationFails() throws ServletException, IOException {
+        String prefix = "procpref0004";
+        String rawKey = "pg_proc_test_" + prefix + "_1234567890123456789012345678901234567890123";
+        String expectedHash = "f".repeat(64);
+        ProcessorCredential credential = new ProcessorCredential(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                prefix,
+                expectedHash,
+                Instant.now()
+        );
+
+        when(request.getHeader(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer " + rawKey);
+        when(processorCredentialRepository.findByKeyPrefix(prefix)).thenReturn(Optional.of(credential));
+        when(apiKeyHasher.verify(rawKey, expectedHash)).thenReturn(false);
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(apiKeyHasher).verify(rawKey, expectedHash);
+        verify(authenticationEntryPoint).commence(eq(request), eq(response), any());
+        verify(filterChain, never()).doFilter(any(), any());
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
     }
 }

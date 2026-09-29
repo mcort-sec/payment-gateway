@@ -5,8 +5,11 @@ import com.miguelcortes.paymentgateway.application.exception.IdempotencyConflict
 import com.miguelcortes.paymentgateway.application.exception.MerchantNotFoundException;
 import com.miguelcortes.paymentgateway.application.exception.MerchantSuspendedException;
 import com.miguelcortes.paymentgateway.application.exception.PaymentNotFoundException;
+import com.miguelcortes.paymentgateway.application.exception.ProcessorNotFoundException;
+import com.miguelcortes.paymentgateway.application.exception.ProcessorSuspendedException;
 import com.miguelcortes.paymentgateway.application.port.out.ApiCredentialRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.ApiKeyHasherPort;
+import com.miguelcortes.paymentgateway.application.port.out.ProcessorCredentialRepositoryPort;
 import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CancelPaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreatePaymentUseCase;
@@ -22,6 +25,7 @@ import com.miguelcortes.paymentgateway.infrastructure.security.ApiKeyAuthenticat
 import com.miguelcortes.paymentgateway.infrastructure.security.ApiKeyAuthenticationToken;
 import com.miguelcortes.paymentgateway.infrastructure.security.ApiKeyParser;
 import com.miguelcortes.paymentgateway.infrastructure.security.MerchantPrincipal;
+import com.miguelcortes.paymentgateway.infrastructure.security.ProcessorPrincipal;
 import com.miguelcortes.paymentgateway.infrastructure.security.SecurityConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -81,10 +85,17 @@ class PaymentControllerTest {
     private ApiCredentialRepositoryPort apiCredentialRepository;
 
     @MockitoBean
+    private ProcessorCredentialRepositoryPort processorCredentialRepository;
+
+    @MockitoBean
     private ApiKeyHasherPort apiKeyHasher;
 
     private RequestPostProcessor authenticatedMerchant(UUID merchantId) {
-        return authentication(ApiKeyAuthenticationToken.authenticated(new MerchantPrincipal(merchantId)));
+        return authentication(ApiKeyAuthenticationToken.authenticatedMerchant(new MerchantPrincipal(merchantId)));
+    }
+
+    private RequestPostProcessor authenticatedProcessor(UUID processorId) {
+        return authentication(ApiKeyAuthenticationToken.authenticatedProcessor(new ProcessorPrincipal(processorId)));
     }
 
     @Test
@@ -213,8 +224,32 @@ class PaymentControllerTest {
     }
 
     @Test
-    @DisplayName("Should return 403 Forbidden when authenticated merchant calls POST /payments/{id}/approve (denyAll)")
-    void shouldReturn403WhenCallingApprovePayment() throws Exception {
+    @DisplayName("Should return 401 Unauthorized when POST /payments/{id}/approve is called without authentication")
+    void shouldReturn401WhenUnauthenticatedOnApprovePayment() throws Exception {
+        mockMvc.perform(post("/payments/{id}/approve", UUID.randomUUID()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message").value("Invalid or missing API key"));
+
+        verifyNoInteractions(approvePaymentUseCase);
+    }
+
+    @Test
+    @DisplayName("Should return 401 Unauthorized when POST /payments/{id}/decline is called without authentication")
+    void shouldReturn401WhenUnauthenticatedOnDeclinePayment() throws Exception {
+        mockMvc.perform(post("/payments/{id}/decline", UUID.randomUUID()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message").value("Invalid or missing API key"));
+
+        verifyNoInteractions(declinePaymentUseCase);
+    }
+
+    @Test
+    @DisplayName("Should return 403 Forbidden when authenticated merchant calls POST /payments/{id}/approve")
+    void shouldReturn403WhenMerchantCallsApprovePayment() throws Exception {
         UUID merchantId = UUID.randomUUID();
         UUID paymentId = UUID.randomUUID();
 
@@ -230,8 +265,8 @@ class PaymentControllerTest {
     }
 
     @Test
-    @DisplayName("Should return 403 Forbidden when authenticated merchant calls POST /payments/{id}/decline (denyAll)")
-    void shouldReturn403WhenCallingDeclinePayment() throws Exception {
+    @DisplayName("Should return 403 Forbidden when authenticated merchant calls POST /payments/{id}/decline")
+    void shouldReturn403WhenMerchantCallsDeclinePayment() throws Exception {
         UUID merchantId = UUID.randomUUID();
         UUID paymentId = UUID.randomUUID();
 
@@ -244,6 +279,190 @@ class PaymentControllerTest {
                 .andExpect(jsonPath("$.path").value("/payments/" + paymentId + "/decline"));
 
         verifyNoInteractions(declinePaymentUseCase);
+    }
+
+    @Test
+    @DisplayName("Should return 403 Forbidden when authenticated processor calls POST /payments")
+    void shouldReturn403WhenProcessorCallsCreatePayment() throws Exception {
+        UUID processorId = UUID.randomUUID();
+        String requestJson = """
+                {
+                    "amount": 50000,
+                    "currency": "COP"
+                }
+                """;
+
+        mockMvc.perform(post("/payments")
+                        .with(authenticatedProcessor(processorId))
+                        .header("Idempotency-Key", "proc-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message").value("Access denied"));
+
+        verifyNoInteractions(createPaymentUseCase);
+    }
+
+    @Test
+    @DisplayName("Should return 403 Forbidden when authenticated processor calls GET /payments/{id}")
+    void shouldReturn403WhenProcessorCallsGetPayment() throws Exception {
+        UUID processorId = UUID.randomUUID();
+
+        mockMvc.perform(get("/payments/{id}", UUID.randomUUID())
+                        .with(authenticatedProcessor(processorId)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message").value("Access denied"));
+
+        verifyNoInteractions(getPaymentUseCase);
+    }
+
+    @Test
+    @DisplayName("Should return 403 Forbidden when authenticated processor calls POST /payments/{id}/cancel")
+    void shouldReturn403WhenProcessorCallsCancelPayment() throws Exception {
+        UUID processorId = UUID.randomUUID();
+
+        mockMvc.perform(post("/payments/{id}/cancel", UUID.randomUUID())
+                        .with(authenticatedProcessor(processorId)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message").value("Access denied"));
+
+        verifyNoInteractions(cancelPaymentUseCase);
+    }
+
+    @Test
+    @DisplayName("Should return 200 OK and APPROVED status when authenticated processor approves payment")
+    void shouldApprovePaymentSuccessfullyWhenProcessorAuthenticated() throws Exception {
+        UUID paymentId = UUID.randomUUID();
+        UUID processorId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-09-28T20:00:00Z");
+
+        Payment mockPayment = Payment.reconstitute(
+                paymentId,
+                merchantId,
+                50000L,
+                Currency.COP,
+                PaymentStatus.APPROVED,
+                "app-key",
+                createdAt,
+                0L
+        );
+
+        when(approvePaymentUseCase.execute(paymentId, processorId)).thenReturn(mockPayment);
+
+        mockMvc.perform(post("/payments/{id}/approve", paymentId)
+                        .with(authenticatedProcessor(processorId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(paymentId.toString()))
+                .andExpect(jsonPath("$.merchantId").value(merchantId.toString()))
+                .andExpect(jsonPath("$.status").value("APPROVED"));
+
+        verify(approvePaymentUseCase).execute(paymentId, processorId);
+    }
+
+    @Test
+    @DisplayName("Should return 200 OK and DECLINED status when authenticated processor declines payment")
+    void shouldDeclinePaymentSuccessfullyWhenProcessorAuthenticated() throws Exception {
+        UUID paymentId = UUID.randomUUID();
+        UUID processorId = UUID.randomUUID();
+        UUID merchantId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-09-28T20:00:00Z");
+
+        Payment mockPayment = Payment.reconstitute(
+                paymentId,
+                merchantId,
+                50000L,
+                Currency.COP,
+                PaymentStatus.DECLINED,
+                "dec-key",
+                createdAt,
+                0L
+        );
+
+        when(declinePaymentUseCase.execute(paymentId, processorId)).thenReturn(mockPayment);
+
+        mockMvc.perform(post("/payments/{id}/decline", paymentId)
+                        .with(authenticatedProcessor(processorId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(paymentId.toString()))
+                .andExpect(jsonPath("$.merchantId").value(merchantId.toString()))
+                .andExpect(jsonPath("$.status").value("DECLINED"));
+
+        verify(declinePaymentUseCase).execute(paymentId, processorId);
+    }
+
+    @Test
+    @DisplayName("Should return 403 Forbidden when processor is suspended during approval")
+    void shouldReturn403WhenProcessorIsSuspendedOnApprove() throws Exception {
+        UUID paymentId = UUID.randomUUID();
+        UUID processorId = UUID.randomUUID();
+
+        when(approvePaymentUseCase.execute(paymentId, processorId))
+                .thenThrow(new ProcessorSuspendedException(processorId));
+
+        mockMvc.perform(post("/payments/{id}/approve", paymentId)
+                        .with(authenticatedProcessor(processorId)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message").value("Processor is suspended: " + processorId));
+    }
+
+    @Test
+    @DisplayName("Should return 403 Forbidden when processor is suspended during decline")
+    void shouldReturn403WhenProcessorIsSuspendedOnDecline() throws Exception {
+        UUID paymentId = UUID.randomUUID();
+        UUID processorId = UUID.randomUUID();
+
+        when(declinePaymentUseCase.execute(paymentId, processorId))
+                .thenThrow(new ProcessorSuspendedException(processorId));
+
+        mockMvc.perform(post("/payments/{id}/decline", paymentId)
+                        .with(authenticatedProcessor(processorId)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message").value("Processor is suspended: " + processorId));
+    }
+
+    @Test
+    @DisplayName("Should return 404 Not Found when payment does not exist on approve")
+    void shouldReturn404WhenPaymentNotFoundOnApprove() throws Exception {
+        UUID paymentId = UUID.randomUUID();
+        UUID processorId = UUID.randomUUID();
+
+        when(approvePaymentUseCase.execute(paymentId, processorId))
+                .thenThrow(new PaymentNotFoundException(paymentId));
+
+        mockMvc.perform(post("/payments/{id}/approve", paymentId)
+                        .with(authenticatedProcessor(processorId)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.message").value("Payment not found with id: " + paymentId));
+    }
+
+    @Test
+    @DisplayName("Should return 409 Conflict when payment state is invalid on approve")
+    void shouldReturn409WhenPaymentStateInvalidOnApprove() throws Exception {
+        UUID paymentId = UUID.randomUUID();
+        UUID processorId = UUID.randomUUID();
+
+        when(approvePaymentUseCase.execute(paymentId, processorId))
+                .thenThrow(new InvalidPaymentStateException("Cannot approve payment with status DECLINED"));
+
+        mockMvc.perform(post("/payments/{id}/approve", paymentId)
+                        .with(authenticatedProcessor(processorId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message").value("Cannot approve payment with status DECLINED"));
     }
 
     @Test

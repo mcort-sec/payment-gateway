@@ -10,7 +10,8 @@ import java.util.regex.Pattern;
 public class ApiKeyParser {
 
     private static final String BEARER_PREFIX = "bearer ";
-    private static final Pattern API_KEY_PATTERN = Pattern.compile("^pg_test_([a-zA-Z0-9]{12})_[a-zA-Z0-9_-]{43}$");
+    private static final Pattern MERCHANT_KEY_PATTERN = Pattern.compile("^pg_test_([a-zA-Z0-9]{12})_[a-zA-Z0-9_-]{43}$");
+    private static final Pattern PROCESSOR_KEY_PATTERN = Pattern.compile("^pg_proc_test_([a-zA-Z0-9]{12})_[a-zA-Z0-9_-]{43}$");
 
     public Optional<ParsedApiKey> parseHeader(String authorizationHeader) {
         if (authorizationHeader == null) {
@@ -23,15 +24,25 @@ public class ApiKeyParser {
         }
 
         String rawKey = trimmedHeader.substring(BEARER_PREFIX.length()).trim();
-        Matcher matcher = API_KEY_PATTERN.matcher(rawKey);
-        if (!matcher.matches()) {
-            return Optional.empty();
+
+        Matcher processorMatcher = PROCESSOR_KEY_PATTERN.matcher(rawKey);
+        if (processorMatcher.matches()) {
+            return Optional.of(new ParsedApiKey.Processor(rawKey, processorMatcher.group(1)));
         }
 
-        String prefix = matcher.group(1);
-        return Optional.of(new ParsedApiKey(rawKey, prefix));
+        Matcher merchantMatcher = MERCHANT_KEY_PATTERN.matcher(rawKey);
+        if (merchantMatcher.matches()) {
+            return Optional.of(new ParsedApiKey.Merchant(rawKey, merchantMatcher.group(1)));
+        }
+
+        return Optional.empty();
     }
 
-    public record ParsedApiKey(String plaintextKey, String keyPrefix) {
+    public sealed interface ParsedApiKey permits ParsedApiKey.Merchant, ParsedApiKey.Processor {
+        String plaintextKey();
+        String keyPrefix();
+
+        record Merchant(String plaintextKey, String keyPrefix) implements ParsedApiKey {}
+        record Processor(String plaintextKey, String keyPrefix) implements ParsedApiKey {}
     }
 }

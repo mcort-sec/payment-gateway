@@ -1,16 +1,19 @@
 package com.miguelcortes.paymentgateway.infrastructure.crypto;
 
 import com.miguelcortes.paymentgateway.application.dto.GeneratedApiKey;
+import com.miguelcortes.paymentgateway.application.model.ApiKeyType;
 import com.miguelcortes.paymentgateway.application.port.out.ApiKeyGeneratorPort;
 import org.springframework.stereotype.Component;
 
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.Objects;
 
 @Component
 public class SecureRandomApiKeyGenerator implements ApiKeyGeneratorPort {
 
-    private static final String ENVIRONMENT_PREFIX = "pg_test_";
+    private static final String MERCHANT_PREFIX = "pg_test_";
+    private static final String PROCESSOR_PREFIX = "pg_proc_test_";
     private static final String BASE62_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     private static final int PREFIX_LENGTH = 12;
     private static final int SECRET_BYTES_LENGTH = 32;
@@ -26,13 +29,20 @@ public class SecureRandomApiKeyGenerator implements ApiKeyGeneratorPort {
     }
 
     @Override
-    public GeneratedApiKey generateTestKey() {
+    public GeneratedApiKey generate(ApiKeyType type) {
+        Objects.requireNonNull(type, "ApiKeyType must not be null");
+
+        String scheme = switch (type) {
+            case MERCHANT -> MERCHANT_PREFIX;
+            case PROCESSOR -> PROCESSOR_PREFIX;
+        };
+
         String keyPrefix = generateBase62Prefix(PREFIX_LENGTH);
         byte[] secretBytes = new byte[SECRET_BYTES_LENGTH];
         secureRandom.nextBytes(secretBytes);
         String secret = Base64.getUrlEncoder().withoutPadding().encodeToString(secretBytes);
 
-        String fullPlaintextApiKey = ENVIRONMENT_PREFIX + keyPrefix + "_" + secret;
+        String fullPlaintextApiKey = scheme + keyPrefix + "_" + secret;
 
         return new GeneratedApiKey(keyPrefix, fullPlaintextApiKey);
     }

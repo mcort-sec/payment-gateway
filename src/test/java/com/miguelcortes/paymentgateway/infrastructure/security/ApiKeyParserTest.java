@@ -10,6 +10,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ApiKeyParserTest {
@@ -22,16 +23,33 @@ class ApiKeyParserTest {
     }
 
     @Test
-    @DisplayName("Should successfully parse valid Bearer authorization header")
-    void shouldParseValidBearerAuthorizationHeader() {
+    @DisplayName("Should successfully parse valid Merchant Bearer authorization header")
+    void shouldParseValidMerchantBearerAuthorizationHeader() {
         String prefix = "a1B2c3D4e5F6";
-        String secret = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG"; // 26 + 10 + 7 = 43 chars
+        String secret = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG"; // 43 chars
         String rawKey = "pg_test_" + prefix + "_" + secret;
         String header = "Bearer " + rawKey;
 
         Optional<ApiKeyParser.ParsedApiKey> result = parser.parseHeader(header);
 
         assertTrue(result.isPresent());
+        assertInstanceOf(ApiKeyParser.ParsedApiKey.Merchant.class, result.get());
+        assertEquals(rawKey, result.get().plaintextKey());
+        assertEquals(prefix, result.get().keyPrefix());
+    }
+
+    @Test
+    @DisplayName("Should successfully parse valid Processor Bearer authorization header")
+    void shouldParseValidProcessorBearerAuthorizationHeader() {
+        String prefix = "p1R2o3C4e5S6";
+        String secret = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG"; // 43 chars
+        String rawKey = "pg_proc_test_" + prefix + "_" + secret;
+        String header = "Bearer " + rawKey;
+
+        Optional<ApiKeyParser.ParsedApiKey> result = parser.parseHeader(header);
+
+        assertTrue(result.isPresent());
+        assertInstanceOf(ApiKeyParser.ParsedApiKey.Processor.class, result.get());
         assertEquals(rawKey, result.get().plaintextKey());
         assertEquals(prefix, result.get().keyPrefix());
     }
@@ -48,6 +66,7 @@ class ApiKeyParserTest {
         Optional<ApiKeyParser.ParsedApiKey> result = parser.parseHeader(header);
 
         assertTrue(result.isPresent());
+        assertInstanceOf(ApiKeyParser.ParsedApiKey.Merchant.class, result.get());
         assertEquals(rawKey, result.get().plaintextKey());
         assertEquals(prefix, result.get().keyPrefix());
     }
@@ -85,6 +104,8 @@ class ApiKeyParserTest {
             "Bearer pg_test_1234567890ab_12345678901234567890123456789012345678901234",   // secret 44 chars
             "Bearer pg_test_1234567890ab_123456789012345678901234567890123456789012=",    // invalid char '='
             "Bearer pg_test_1234567890ab_123456789012345678901234567890123456789012+",    // invalid char '+'
+            "Bearer pg_proc_test_1234567890a_1234567890123456789012345678901234567890123",  // processor prefix 11 chars
+            "Bearer pg_proc_test_1234567890ab_123456789012345678901234567890123456789012",   // processor secret 42 chars
             "Bearer invalid-format"
     })
     @DisplayName("Should return empty when API key format violates pattern")

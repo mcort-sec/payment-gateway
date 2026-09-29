@@ -10,6 +10,7 @@ import com.miguelcortes.paymentgateway.domain.model.Payment;
 import com.miguelcortes.paymentgateway.entrypoint.rest.dto.CreatePaymentRequest;
 import com.miguelcortes.paymentgateway.entrypoint.rest.dto.PaymentResponse;
 import com.miguelcortes.paymentgateway.infrastructure.security.MerchantPrincipal;
+import com.miguelcortes.paymentgateway.infrastructure.security.ProcessorPrincipal;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -90,14 +91,20 @@ public class PaymentController {
     }
 
     @PostMapping("/{id}/approve")
-    public ResponseEntity<PaymentResponse> approvePayment(@PathVariable UUID id) {
-        Payment payment = approvePaymentUseCase.execute(id);
+    public ResponseEntity<PaymentResponse> approvePayment(
+            @AuthenticationPrincipal ProcessorPrincipal principal,
+            @PathVariable UUID id
+    ) {
+        Payment payment = approvePaymentUseCase.execute(id, principal.processorId());
         return ResponseEntity.ok(PaymentResponse.fromDomain(payment));
     }
 
     @PostMapping("/{id}/decline")
-    public ResponseEntity<PaymentResponse> declinePayment(@PathVariable UUID id) {
-        Payment payment = declinePaymentUseCase.execute(id);
+    public ResponseEntity<PaymentResponse> declinePayment(
+            @AuthenticationPrincipal ProcessorPrincipal principal,
+            @PathVariable UUID id
+    ) {
+        Payment payment = declinePaymentUseCase.execute(id, principal.processorId());
         return ResponseEntity.ok(PaymentResponse.fromDomain(payment));
     }
 

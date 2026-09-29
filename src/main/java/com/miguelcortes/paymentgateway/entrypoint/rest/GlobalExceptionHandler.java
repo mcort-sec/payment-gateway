@@ -5,8 +5,12 @@ import com.miguelcortes.paymentgateway.application.exception.MerchantNotFoundExc
 import com.miguelcortes.paymentgateway.application.exception.MerchantSuspendedException;
 import com.miguelcortes.paymentgateway.application.exception.PaymentConcurrentModificationException;
 import com.miguelcortes.paymentgateway.application.exception.PaymentNotFoundException;
+import com.miguelcortes.paymentgateway.application.exception.ProcessorNotFoundException;
+import com.miguelcortes.paymentgateway.application.exception.ProcessorSuspendedException;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentException;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentStateException;
+import com.miguelcortes.paymentgateway.domain.exception.InvalidProcessorCredentialException;
+import com.miguelcortes.paymentgateway.domain.exception.InvalidProcessorException;
 import com.miguelcortes.paymentgateway.entrypoint.rest.dto.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -64,6 +68,62 @@ public class GlobalExceptionHandler {
                 request.getRequestURI()
         );
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+    }
+
+    @ExceptionHandler(ProcessorNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleProcessorNotFound(
+            ProcessorNotFoundException ex,
+            HttpServletRequest request
+    ) {
+        ErrorResponse error = ErrorResponse.of(
+                HttpStatus.NOT_FOUND.value(),
+                HttpStatus.NOT_FOUND.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+    }
+
+    @ExceptionHandler(ProcessorSuspendedException.class)
+    public ResponseEntity<ErrorResponse> handleProcessorSuspended(
+            ProcessorSuspendedException ex,
+            HttpServletRequest request
+    ) {
+        ErrorResponse error = ErrorResponse.of(
+                HttpStatus.FORBIDDEN.value(),
+                HttpStatus.FORBIDDEN.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+    }
+
+    @ExceptionHandler(InvalidProcessorException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidProcessor(
+            InvalidProcessorException ex,
+            HttpServletRequest request
+    ) {
+        ErrorResponse error = ErrorResponse.of(
+                HttpStatus.BAD_REQUEST.value(),
+                HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
+    @ExceptionHandler(InvalidProcessorCredentialException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidProcessorCredential(
+            InvalidProcessorCredentialException ex,
+            HttpServletRequest request
+    ) {
+        ErrorResponse error = ErrorResponse.of(
+                HttpStatus.BAD_REQUEST.value(),
+                HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
     @ExceptionHandler(InvalidPaymentStateException.class)

@@ -1,11 +1,16 @@
 package com.miguelcortes.paymentgateway.application.usecase;
 
 import com.miguelcortes.paymentgateway.application.exception.PaymentNotFoundException;
+import com.miguelcortes.paymentgateway.application.exception.ProcessorNotFoundException;
+import com.miguelcortes.paymentgateway.application.exception.ProcessorSuspendedException;
 import com.miguelcortes.paymentgateway.application.port.out.PaymentRepositoryPort;
+import com.miguelcortes.paymentgateway.application.port.out.ProcessorRepositoryPort;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentStateException;
 import com.miguelcortes.paymentgateway.domain.model.Currency;
 import com.miguelcortes.paymentgateway.domain.model.Payment;
 import com.miguelcortes.paymentgateway.domain.model.PaymentStatus;
+import com.miguelcortes.paymentgateway.domain.model.Processor;
+import com.miguelcortes.paymentgateway.domain.model.ProcessorStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,17 +27,38 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DeclinePaymentUseCaseTest {
 
-    private InMemoryPaymentRepository repository;
+    private InMemoryPaymentRepository paymentRepository;
+    private InMemoryProcessorRepository processorRepository;
     private DeclinePaymentUseCase useCase;
+
+    private static final UUID ACTIVE_PROCESSOR_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final UUID SUSPENDED_PROCESSOR_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
 
     @BeforeEach
     void setUp() {
-        repository = new InMemoryPaymentRepository();
-        useCase = new DeclinePaymentUseCase(repository);
+        paymentRepository = new InMemoryPaymentRepository();
+        processorRepository = new InMemoryProcessorRepository();
+        useCase = new DeclinePaymentUseCase(paymentRepository, processorRepository);
+
+        Processor activeProcessor = new Processor(
+                ACTIVE_PROCESSOR_ID,
+                "Active Processor",
+                ProcessorStatus.ACTIVE,
+                Instant.now()
+        );
+        Processor suspendedProcessor = new Processor(
+                SUSPENDED_PROCESSOR_ID,
+                "Suspended Processor",
+                ProcessorStatus.SUSPENDED,
+                Instant.now()
+        );
+
+        processorRepository.save(activeProcessor);
+        processorRepository.save(suspendedProcessor);
     }
 
     @Test
-    @DisplayName("Should decline PENDING payment and save it exactly once")
+    @DisplayName("Should decline PENDING payment and save it exactly once when processor is ACTIVE")
     void shouldDeclinePendingPaymentAndSaveOnce() {
         UUID paymentId = UUID.randomUUID();
         Payment pendingPayment = new Payment(
@@ -43,14 +69,50 @@ class DeclinePaymentUseCaseTest {
                 "key-1",
                 Instant.now()
         );
-        repository.save(pendingPayment);
-        repository.resetSaveCounter();
+        paymentRepository.save(pendingPayment);
+        paymentRepository.resetSaveCounter();
 
-        Payment declinedPayment = useCase.execute(paymentId);
+        Payment declinedPayment = useCase.execute(paymentId, ACTIVE_PROCESSOR_ID);
 
         assertEquals(PaymentStatus.DECLINED, declinedPayment.getStatus());
         assertSame(pendingPayment, declinedPayment);
-        assertEquals(1, repository.saveCallCount);
+        assertEquals(1, paymentRepository.saveCallCount);
+    }
+
+    @Test
+    @DisplayName("Should throw IllegalArgumentException when paymentId or processorId is null")
+    void shouldThrowIllegalArgumentExceptionWhenArgsAreNull() {
+        assertThrows(IllegalArgumentException.class, () -> useCase.execute(null, ACTIVE_PROCESSOR_ID));
+        assertThrows(IllegalArgumentException.class, () -> useCase.execute(UUID.randomUUID(), null));
+    }
+
+    @Test
+    @DisplayName("Should throw ProcessorNotFoundException when processor does not exist")
+    void shouldThrowProcessorNotFoundExceptionWhenProcessorDoesNotExist() {
+        UUID nonExistentProcessorId = UUID.randomUUID();
+        UUID paymentId = UUID.randomUUID();
+
+        ProcessorNotFoundException exception = assertThrows(
+                ProcessorNotFoundException.class,
+                () -> useCase.execute(paymentId, nonExistentProcessorId)
+        );
+
+        assertEquals("Processor not found with id: " + nonExistentProcessorId, exception.getMessage());
+        assertEquals(0, paymentRepository.saveCallCount);
+    }
+
+    @Test
+    @DisplayName("Should throw ProcessorSuspendedException when processor is SUSPENDED")
+    void shouldThrowProcessorSuspendedExceptionWhenProcessorIsSuspended() {
+        UUID paymentId = UUID.randomUUID();
+
+        ProcessorSuspendedException exception = assertThrows(
+                ProcessorSuspendedException.class,
+                () -> useCase.execute(paymentId, SUSPENDED_PROCESSOR_ID)
+        );
+
+        assertEquals("Processor is suspended: " + SUSPENDED_PROCESSOR_ID, exception.getMessage());
+        assertEquals(0, paymentRepository.saveCallCount);
     }
 
     @Test
@@ -60,11 +122,11 @@ class DeclinePaymentUseCaseTest {
 
         PaymentNotFoundException exception = assertThrows(
                 PaymentNotFoundException.class,
-                () -> useCase.execute(nonExistentId)
+                () -> useCase.execute(nonExistentId, ACTIVE_PROCESSOR_ID)
         );
 
         assertEquals("Payment not found with id: " + nonExistentId, exception.getMessage());
-        assertEquals(0, repository.saveCallCount);
+        assertEquals(0, paymentRepository.saveCallCount);
     }
 
     @Test
@@ -81,15 +143,15 @@ class DeclinePaymentUseCaseTest {
                 Instant.now(),
                 0L
         );
-        repository.save(payment);
-        repository.resetSaveCounter();
+        paymentRepository.save(payment);
+        paymentRepository.resetSaveCounter();
 
         assertThrows(
                 InvalidPaymentStateException.class,
-                () -> useCase.execute(paymentId)
+                () -> useCase.execute(paymentId, ACTIVE_PROCESSOR_ID)
         );
 
-        assertEquals(0, repository.saveCallCount);
+        assertEquals(0, paymentRepository.saveCallCount);
     }
 
     @Test
@@ -106,15 +168,15 @@ class DeclinePaymentUseCaseTest {
                 Instant.now(),
                 0L
         );
-        repository.save(payment);
-        repository.resetSaveCounter();
+        paymentRepository.save(payment);
+        paymentRepository.resetSaveCounter();
 
         assertThrows(
                 InvalidPaymentStateException.class,
-                () -> useCase.execute(paymentId)
+                () -> useCase.execute(paymentId, ACTIVE_PROCESSOR_ID)
         );
 
-        assertEquals(0, repository.saveCallCount);
+        assertEquals(0, paymentRepository.saveCallCount);
     }
 
     @Test
@@ -131,15 +193,15 @@ class DeclinePaymentUseCaseTest {
                 Instant.now(),
                 0L
         );
-        repository.save(payment);
-        repository.resetSaveCounter();
+        paymentRepository.save(payment);
+        paymentRepository.resetSaveCounter();
 
         assertThrows(
                 InvalidPaymentStateException.class,
-                () -> useCase.execute(paymentId)
+                () -> useCase.execute(paymentId, ACTIVE_PROCESSOR_ID)
         );
 
-        assertEquals(0, repository.saveCallCount);
+        assertEquals(0, paymentRepository.saveCallCount);
     }
 
     private static class InMemoryPaymentRepository implements PaymentRepositoryPort {
@@ -172,6 +234,20 @@ class DeclinePaymentUseCaseTest {
             return storage.values().stream()
                     .filter(p -> p.getMerchantId().equals(merchantId) && p.getIdempotencyKey().equals(idempotencyKey))
                     .findFirst();
+        }
+    }
+
+    private static class InMemoryProcessorRepository implements ProcessorRepositoryPort {
+        private final Map<UUID, Processor> storage = new HashMap<>();
+
+        @Override
+        public void save(Processor processor) {
+            storage.put(processor.getId(), processor);
+        }
+
+        @Override
+        public Optional<Processor> findById(UUID id) {
+            return Optional.ofNullable(storage.get(id));
         }
     }
 }

@@ -7,6 +7,7 @@ import com.miguelcortes.paymentgateway.application.exception.ApiCredentialGenera
 import com.miguelcortes.paymentgateway.application.exception.DuplicateKeyPrefixException;
 import com.miguelcortes.paymentgateway.application.exception.MerchantNotFoundException;
 import com.miguelcortes.paymentgateway.application.exception.MerchantSuspendedException;
+import com.miguelcortes.paymentgateway.application.model.ApiKeyType;
 import com.miguelcortes.paymentgateway.application.port.out.ApiCredentialRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.ApiKeyGeneratorPort;
 import com.miguelcortes.paymentgateway.application.port.out.ApiKeyHasherPort;
@@ -55,8 +56,8 @@ public class CreateApiCredentialUseCase {
         }
 
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-            GeneratedApiKey generatedKey = apiKeyGenerator.generateTestKey();
-            String keyHash = apiKeyHasher.hash(generatedKey.fullPlaintextApiKey());
+            GeneratedApiKey generatedKey = apiKeyGenerator.generate(ApiKeyType.MERCHANT);
+            String keyHash = apiKeyHasher.hash(generatedKey.plaintextApiKey());
             UUID id = idGenerator.generate();
             Instant now = timeProvider.now();
 
@@ -70,7 +71,7 @@ public class CreateApiCredentialUseCase {
 
             try {
                 apiCredentialRepositoryPort.save(credential);
-                return new GeneratedApiCredential(credential, generatedKey.fullPlaintextApiKey());
+                return new GeneratedApiCredential(credential, generatedKey.plaintextApiKey());
             } catch (DuplicateKeyPrefixException ex) {
                 if (attempt == MAX_ATTEMPTS) {
                     throw new ApiCredentialGenerationException(

@@ -6,12 +6,16 @@ import com.miguelcortes.paymentgateway.application.port.out.ApiKeyHasherPort;
 import com.miguelcortes.paymentgateway.application.port.out.IdGenerator;
 import com.miguelcortes.paymentgateway.application.port.out.MerchantRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.PaymentRepositoryPort;
+import com.miguelcortes.paymentgateway.application.port.out.ProcessorCredentialRepositoryPort;
+import com.miguelcortes.paymentgateway.application.port.out.ProcessorRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.TimeProvider;
 import com.miguelcortes.paymentgateway.application.usecase.ApprovePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CancelPaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreateApiCredentialUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreateMerchantUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.CreatePaymentUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.CreateProcessorCredentialUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.CreateProcessorUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.DeclinePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.GetPaymentUseCase;
 import org.springframework.context.annotation.Bean;
@@ -36,13 +40,19 @@ public class ApplicationConfig {
     }
 
     @Bean
-    public ApprovePaymentUseCase approvePaymentUseCase(PaymentRepositoryPort paymentRepositoryPort) {
-        return new ApprovePaymentUseCase(paymentRepositoryPort);
+    public ApprovePaymentUseCase approvePaymentUseCase(
+            PaymentRepositoryPort paymentRepositoryPort,
+            ProcessorRepositoryPort processorRepositoryPort
+    ) {
+        return new ApprovePaymentUseCase(paymentRepositoryPort, processorRepositoryPort);
     }
 
     @Bean
-    public DeclinePaymentUseCase declinePaymentUseCase(PaymentRepositoryPort paymentRepositoryPort) {
-        return new DeclinePaymentUseCase(paymentRepositoryPort);
+    public DeclinePaymentUseCase declinePaymentUseCase(
+            PaymentRepositoryPort paymentRepositoryPort,
+            ProcessorRepositoryPort processorRepositoryPort
+    ) {
+        return new DeclinePaymentUseCase(paymentRepositoryPort, processorRepositoryPort);
     }
 
     @Bean
@@ -75,6 +85,38 @@ public class ApplicationConfig {
         return new CreateApiCredentialUseCase(
                 apiCredentialRepositoryPort,
                 merchantRepositoryPort,
+                apiKeyGeneratorPort,
+                apiKeyHasherPort,
+                idGenerator,
+                timeProvider
+        );
+    }
+
+    @Bean
+    public CreateProcessorUseCase createProcessorUseCase(
+            ProcessorRepositoryPort processorRepositoryPort,
+            IdGenerator idGenerator,
+            TimeProvider timeProvider
+    ) {
+        return new CreateProcessorUseCase(
+                processorRepositoryPort,
+                idGenerator,
+                timeProvider
+        );
+    }
+
+    @Bean
+    public CreateProcessorCredentialUseCase createProcessorCredentialUseCase(
+            ProcessorCredentialRepositoryPort processorCredentialRepositoryPort,
+            ProcessorRepositoryPort processorRepositoryPort,
+            ApiKeyGeneratorPort apiKeyGeneratorPort,
+            ApiKeyHasherPort apiKeyHasherPort,
+            IdGenerator idGenerator,
+            TimeProvider timeProvider
+    ) {
+        return new CreateProcessorCredentialUseCase(
+                processorCredentialRepositoryPort,
+                processorRepositoryPort,
                 apiKeyGeneratorPort,
                 apiKeyHasherPort,
                 idGenerator,

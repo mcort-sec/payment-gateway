@@ -1,31 +1,29 @@
 package com.miguelcortes.paymentgateway.application.usecase;
 
-import com.miguelcortes.paymentgateway.application.command.CreateApiCredentialCommand;
-import com.miguelcortes.paymentgateway.application.dto.GeneratedApiCredential;
+import com.miguelcortes.paymentgateway.application.command.CreateProcessorCredentialCommand;
 import com.miguelcortes.paymentgateway.application.dto.GeneratedApiKey;
-import com.miguelcortes.paymentgateway.application.exception.ApiCredentialGenerationException;
-import com.miguelcortes.paymentgateway.application.exception.DuplicateKeyPrefixException;
-import com.miguelcortes.paymentgateway.application.exception.MerchantNotFoundException;
-import com.miguelcortes.paymentgateway.application.exception.MerchantSuspendedException;
+import com.miguelcortes.paymentgateway.application.dto.GeneratedProcessorCredential;
+import com.miguelcortes.paymentgateway.application.exception.DuplicateProcessorKeyPrefixException;
+import com.miguelcortes.paymentgateway.application.exception.ProcessorCredentialGenerationException;
+import com.miguelcortes.paymentgateway.application.exception.ProcessorNotFoundException;
+import com.miguelcortes.paymentgateway.application.exception.ProcessorSuspendedException;
 import com.miguelcortes.paymentgateway.application.model.ApiKeyType;
-import com.miguelcortes.paymentgateway.application.port.out.ApiCredentialRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.ApiKeyGeneratorPort;
 import com.miguelcortes.paymentgateway.application.port.out.ApiKeyHasherPort;
 import com.miguelcortes.paymentgateway.application.port.out.IdGenerator;
-import com.miguelcortes.paymentgateway.application.port.out.MerchantRepositoryPort;
+import com.miguelcortes.paymentgateway.application.port.out.ProcessorCredentialRepositoryPort;
+import com.miguelcortes.paymentgateway.application.port.out.ProcessorRepositoryPort;
 import com.miguelcortes.paymentgateway.application.port.out.TimeProvider;
-import com.miguelcortes.paymentgateway.domain.model.ApiCredential;
 import com.miguelcortes.paymentgateway.domain.model.CredentialStatus;
-import com.miguelcortes.paymentgateway.domain.model.Merchant;
-import com.miguelcortes.paymentgateway.domain.model.MerchantStatus;
+import com.miguelcortes.paymentgateway.domain.model.Processor;
+import com.miguelcortes.paymentgateway.domain.model.ProcessorCredential;
+import com.miguelcortes.paymentgateway.domain.model.ProcessorStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -38,98 +36,96 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class CreateApiCredentialUseCaseTest {
+class CreateProcessorCredentialUseCaseTest {
 
-    private InMemoryApiCredentialRepository fakeCredentialRepository;
-    private InMemoryMerchantRepository fakeMerchantRepository;
+    private InMemoryProcessorCredentialRepository fakeCredentialRepository;
+    private InMemoryProcessorRepository fakeProcessorRepository;
     private SequenceApiKeyGenerator fakeApiKeyGenerator;
     private FakeApiKeyHasher fakeApiKeyHasher;
     private FakeIdGenerator fakeIdGenerator;
     private FakeTimeProvider fakeTimeProvider;
-    private CreateApiCredentialUseCase useCase;
+    private CreateProcessorCredentialUseCase useCase;
 
-    private static final UUID ACTIVE_MERCHANT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
-    private static final UUID SUSPENDED_MERCHANT_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
+    private static final UUID ACTIVE_PROCESSOR_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final UUID SUSPENDED_PROCESSOR_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
     private static final UUID FIXED_CREDENTIAL_ID = UUID.fromString("00000000-0000-0000-0000-000000000099");
     private static final Instant FIXED_TIME = Instant.parse("2026-09-28T10:00:00Z");
 
     @BeforeEach
     void setUp() {
-        fakeCredentialRepository = new InMemoryApiCredentialRepository();
-        fakeMerchantRepository = new InMemoryMerchantRepository();
+        fakeCredentialRepository = new InMemoryProcessorCredentialRepository();
+        fakeProcessorRepository = new InMemoryProcessorRepository();
         fakeApiKeyGenerator = new SequenceApiKeyGenerator();
         fakeApiKeyHasher = new FakeApiKeyHasher();
         fakeIdGenerator = new FakeIdGenerator(FIXED_CREDENTIAL_ID);
         fakeTimeProvider = new FakeTimeProvider(FIXED_TIME);
 
-        useCase = new CreateApiCredentialUseCase(
+        useCase = new CreateProcessorCredentialUseCase(
                 fakeCredentialRepository,
-                fakeMerchantRepository,
+                fakeProcessorRepository,
                 fakeApiKeyGenerator,
                 fakeApiKeyHasher,
                 fakeIdGenerator,
                 fakeTimeProvider
         );
 
-        Merchant activeMerchant = new Merchant(
-                ACTIVE_MERCHANT_ID,
-                "Acme Active",
-                "active@acme.com",
-                MerchantStatus.ACTIVE,
+        Processor activeProcessor = new Processor(
+                ACTIVE_PROCESSOR_ID,
+                "Processor Active",
+                ProcessorStatus.ACTIVE,
                 FIXED_TIME
         );
-        Merchant suspendedMerchant = new Merchant(
-                SUSPENDED_MERCHANT_ID,
-                "Acme Suspended",
-                "suspended@acme.com",
-                MerchantStatus.SUSPENDED,
+        Processor suspendedProcessor = new Processor(
+                SUSPENDED_PROCESSOR_ID,
+                "Processor Suspended",
+                ProcessorStatus.SUSPENDED,
                 FIXED_TIME
         );
 
-        fakeMerchantRepository.save(activeMerchant);
-        fakeMerchantRepository.save(suspendedMerchant);
+        fakeProcessorRepository.save(activeProcessor);
+        fakeProcessorRepository.save(suspendedProcessor);
     }
 
     @Test
-    @DisplayName("Should create API credential for ACTIVE merchant on first attempt and return plaintext key")
-    void shouldCreateApiCredentialForActiveMerchant() {
-        CreateApiCredentialCommand command = new CreateApiCredentialCommand(ACTIVE_MERCHANT_ID);
+    @DisplayName("Should create API credential for ACTIVE processor on first attempt and return plaintext key")
+    void shouldCreateProcessorCredentialForActiveProcessor() {
+        CreateProcessorCredentialCommand command = new CreateProcessorCredentialCommand(ACTIVE_PROCESSOR_ID);
 
-        GeneratedApiCredential result = useCase.execute(command);
+        GeneratedProcessorCredential result = useCase.execute(command);
 
         assertNotNull(result);
         assertNotNull(result.credential());
         assertNotNull(result.plaintextApiKey());
 
         assertEquals(FIXED_CREDENTIAL_ID, result.credential().getId());
-        assertEquals(ACTIVE_MERCHANT_ID, result.credential().getMerchantId());
+        assertEquals(ACTIVE_PROCESSOR_ID, result.credential().getProcessorId());
         assertEquals("prefixSeq001", result.credential().getKeyPrefix());
         assertEquals(String.format("%064x", 1), result.credential().getKeyHash());
         assertEquals(CredentialStatus.ACTIVE, result.credential().getStatus());
         assertEquals(FIXED_TIME, result.credential().getCreatedAt());
         assertNull(result.credential().getRevokedAt());
 
-        assertEquals("pg_test_prefixSeq001_secret001", result.plaintextApiKey());
+        assertEquals("pg_proc_test_prefixSeq001_secret001", result.plaintextApiKey());
 
         // Repository assertions
         assertEquals(1, fakeCredentialRepository.saveCallCount);
         assertSame(result.credential(), fakeCredentialRepository.lastSavedCredential);
-        assertFalse(fakeCredentialRepository.lastSavedCredential.getKeyHash().contains("pg_test_prefixSeq001_secret001"),
+        assertFalse(fakeCredentialRepository.lastSavedCredential.getKeyHash().contains("pg_proc_test_prefixSeq001_secret001"),
                 "Repository must store hash, never plaintext");
     }
 
     @Test
-    @DisplayName("Should throw MerchantNotFoundException when merchant does not exist and perform no crypto generation")
-    void shouldThrowMerchantNotFoundExceptionWhenMerchantDoesNotExist() {
-        UUID nonExistentMerchantId = UUID.randomUUID();
-        CreateApiCredentialCommand command = new CreateApiCredentialCommand(nonExistentMerchantId);
+    @DisplayName("Should throw ProcessorNotFoundException when processor does not exist and perform no crypto generation")
+    void shouldThrowProcessorNotFoundExceptionWhenProcessorDoesNotExist() {
+        UUID nonExistentProcessorId = UUID.randomUUID();
+        CreateProcessorCredentialCommand command = new CreateProcessorCredentialCommand(nonExistentProcessorId);
 
-        MerchantNotFoundException exception = assertThrows(
-                MerchantNotFoundException.class,
+        ProcessorNotFoundException exception = assertThrows(
+                ProcessorNotFoundException.class,
                 () -> useCase.execute(command)
         );
 
-        assertEquals("Merchant not found with id: " + nonExistentMerchantId, exception.getMessage());
+        assertEquals("Processor not found with id: " + nonExistentProcessorId, exception.getMessage());
         assertEquals(0, fakeApiKeyGenerator.callCount);
         assertEquals(0, fakeApiKeyHasher.callCount);
         assertEquals(0, fakeIdGenerator.callCount);
@@ -138,16 +134,16 @@ class CreateApiCredentialUseCaseTest {
     }
 
     @Test
-    @DisplayName("Should throw MerchantSuspendedException when merchant is SUSPENDED and perform no crypto generation")
-    void shouldThrowMerchantSuspendedExceptionWhenMerchantIsSuspended() {
-        CreateApiCredentialCommand command = new CreateApiCredentialCommand(SUSPENDED_MERCHANT_ID);
+    @DisplayName("Should throw ProcessorSuspendedException when processor is SUSPENDED and perform no crypto generation")
+    void shouldThrowProcessorSuspendedExceptionWhenProcessorIsSuspended() {
+        CreateProcessorCredentialCommand command = new CreateProcessorCredentialCommand(SUSPENDED_PROCESSOR_ID);
 
-        MerchantSuspendedException exception = assertThrows(
-                MerchantSuspendedException.class,
+        ProcessorSuspendedException exception = assertThrows(
+                ProcessorSuspendedException.class,
                 () -> useCase.execute(command)
         );
 
-        assertEquals("Merchant is suspended: " + SUSPENDED_MERCHANT_ID, exception.getMessage());
+        assertEquals("Processor is suspended: " + SUSPENDED_PROCESSOR_ID, exception.getMessage());
         assertEquals(0, fakeApiKeyGenerator.callCount);
         assertEquals(0, fakeApiKeyHasher.callCount);
         assertEquals(0, fakeIdGenerator.callCount);
@@ -158,33 +154,30 @@ class CreateApiCredentialUseCaseTest {
     @Test
     @DisplayName("Should retry with a new key and succeed when first attempt has a prefix collision")
     void shouldRetryAndSucceedOnSecondAttemptWhenFirstCollides() {
-        // Simulate collision on first save attempt
         fakeCredentialRepository.simulateCollisionOnNextSaves(1);
 
-        CreateApiCredentialCommand command = new CreateApiCredentialCommand(ACTIVE_MERCHANT_ID);
+        CreateProcessorCredentialCommand command = new CreateProcessorCredentialCommand(ACTIVE_PROCESSOR_ID);
 
-        GeneratedApiCredential result = useCase.execute(command);
+        GeneratedProcessorCredential result = useCase.execute(command);
 
         assertNotNull(result);
         assertEquals(2, fakeApiKeyGenerator.callCount, "Must generate a second key upon collision");
         assertEquals(2, fakeApiKeyHasher.callCount);
         assertEquals(2, fakeCredentialRepository.saveCallCount);
 
-        // Result corresponds to the second generated key
         assertEquals("prefixSeq002", result.credential().getKeyPrefix());
-        assertEquals("pg_test_prefixSeq002_secret002", result.plaintextApiKey());
+        assertEquals("pg_proc_test_prefixSeq002_secret002", result.plaintextApiKey());
     }
 
     @Test
-    @DisplayName("Should exhaust retries and throw ApiCredentialGenerationException when all 3 attempts collide")
-    void shouldThrowApiCredentialGenerationExceptionWhenAllRetriesExhausted() {
-        // Simulate 3 consecutive collisions
+    @DisplayName("Should exhaust retries and throw ProcessorCredentialGenerationException when all 3 attempts collide")
+    void shouldThrowProcessorCredentialGenerationExceptionWhenAllRetriesExhausted() {
         fakeCredentialRepository.simulateCollisionOnNextSaves(3);
 
-        CreateApiCredentialCommand command = new CreateApiCredentialCommand(ACTIVE_MERCHANT_ID);
+        CreateProcessorCredentialCommand command = new CreateProcessorCredentialCommand(ACTIVE_PROCESSOR_ID);
 
-        ApiCredentialGenerationException exception = assertThrows(
-                ApiCredentialGenerationException.class,
+        ProcessorCredentialGenerationException exception = assertThrows(
+                ProcessorCredentialGenerationException.class,
                 () -> useCase.execute(command)
         );
 
@@ -195,32 +188,25 @@ class CreateApiCredentialUseCaseTest {
 
     // --- Fakes Manuales ---
 
-    private static class InMemoryMerchantRepository implements MerchantRepositoryPort {
-        private final Map<UUID, Merchant> storage = new HashMap<>();
+    private static class InMemoryProcessorRepository implements ProcessorRepositoryPort {
+        private final Map<UUID, Processor> storage = new HashMap<>();
 
         @Override
-        public void save(Merchant merchant) {
-            storage.put(merchant.getId(), merchant);
+        public void save(Processor processor) {
+            storage.put(processor.getId(), processor);
         }
 
         @Override
-        public Optional<Merchant> findById(UUID id) {
+        public Optional<Processor> findById(UUID id) {
             return Optional.ofNullable(storage.get(id));
-        }
-
-        @Override
-        public Optional<Merchant> findByEmail(String email) {
-            return storage.values().stream()
-                    .filter(m -> m.getEmail().equalsIgnoreCase(email))
-                    .findFirst();
         }
     }
 
-    private static class InMemoryApiCredentialRepository implements ApiCredentialRepositoryPort {
-        private final Map<UUID, ApiCredential> storageById = new HashMap<>();
-        private final Map<String, ApiCredential> storageByPrefix = new HashMap<>();
+    private static class InMemoryProcessorCredentialRepository implements ProcessorCredentialRepositoryPort {
+        private final Map<UUID, ProcessorCredential> storageById = new HashMap<>();
+        private final Map<String, ProcessorCredential> storageByPrefix = new HashMap<>();
         int saveCallCount = 0;
-        ApiCredential lastSavedCredential;
+        ProcessorCredential lastSavedCredential;
         private int collisionsToSimulate = 0;
 
         void simulateCollisionOnNextSaves(int count) {
@@ -228,27 +214,27 @@ class CreateApiCredentialUseCaseTest {
         }
 
         @Override
-        public void save(ApiCredential credential) {
+        public void save(ProcessorCredential credential) {
             saveCallCount++;
             lastSavedCredential = credential;
             if (collisionsToSimulate > 0) {
                 collisionsToSimulate--;
-                throw new DuplicateKeyPrefixException("Duplicate key prefix: " + credential.getKeyPrefix());
+                throw new DuplicateProcessorKeyPrefixException("Duplicate processor key prefix: " + credential.getKeyPrefix());
             }
             if (storageByPrefix.containsKey(credential.getKeyPrefix())) {
-                throw new DuplicateKeyPrefixException("Duplicate key prefix: " + credential.getKeyPrefix());
+                throw new DuplicateProcessorKeyPrefixException("Duplicate processor key prefix: " + credential.getKeyPrefix());
             }
             storageById.put(credential.getId(), credential);
             storageByPrefix.put(credential.getKeyPrefix(), credential);
         }
 
         @Override
-        public Optional<ApiCredential> findById(UUID id) {
+        public Optional<ProcessorCredential> findById(UUID id) {
             return Optional.ofNullable(storageById.get(id));
         }
 
         @Override
-        public Optional<ApiCredential> findByKeyPrefix(String keyPrefix) {
+        public Optional<ProcessorCredential> findByKeyPrefix(String keyPrefix) {
             return Optional.ofNullable(storageByPrefix.get(keyPrefix));
         }
     }
@@ -261,7 +247,7 @@ class CreateApiCredentialUseCaseTest {
             callCount++;
             String prefix = String.format("prefixSeq%03d", callCount);
             String secret = String.format("secret%03d", callCount);
-            return new GeneratedApiKey(prefix, "pg_test_" + prefix + "_" + secret);
+            return new GeneratedApiKey(prefix, "pg_proc_test_" + prefix + "_" + secret);
         }
     }
 
@@ -276,7 +262,7 @@ class CreateApiCredentialUseCaseTest {
 
         @Override
         public boolean verify(String plaintextApiKey, String expectedHash) {
-            throw new UnsupportedOperationException("verify is not used in CreateApiCredentialUseCase");
+            throw new UnsupportedOperationException("verify is not used in CreateProcessorCredentialUseCase");
         }
     }
 

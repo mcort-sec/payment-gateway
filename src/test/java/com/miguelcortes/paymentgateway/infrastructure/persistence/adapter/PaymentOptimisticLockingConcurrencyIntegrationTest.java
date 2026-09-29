@@ -7,9 +7,12 @@ import com.miguelcortes.paymentgateway.application.usecase.CancelPaymentUseCase;
 import com.miguelcortes.paymentgateway.domain.model.Currency;
 import com.miguelcortes.paymentgateway.domain.model.Merchant;
 import com.miguelcortes.paymentgateway.domain.model.Payment;
+import com.miguelcortes.paymentgateway.domain.model.Processor;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.entity.PaymentEntity;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataMerchantRepository;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataPaymentRepository;
+import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataProcessorCredentialRepository;
+import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataProcessorRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -53,14 +56,25 @@ class PaymentOptimisticLockingConcurrencyIntegrationTest {
     private MerchantPersistenceAdapter merchantAdapter;
 
     @Autowired
+    private ProcessorPersistenceAdapter processorAdapter;
+
+    @Autowired
     private SpringDataPaymentRepository springDataPaymentRepository;
 
     @Autowired
     private SpringDataMerchantRepository springDataMerchantRepository;
 
+    @Autowired
+    private SpringDataProcessorCredentialRepository springDataProcessorCredentialRepository;
+
+    @Autowired
+    private SpringDataProcessorRepository springDataProcessorRepository;
+
     @BeforeEach
     void setUp() {
         springDataPaymentRepository.deleteAll();
+        springDataProcessorCredentialRepository.deleteAll();
+        springDataProcessorRepository.deleteAll();
         springDataMerchantRepository.deleteAll();
     }
 
@@ -71,6 +85,9 @@ class PaymentOptimisticLockingConcurrencyIntegrationTest {
         UUID paymentId = UUID.randomUUID();
         UUID merchantId = UUID.randomUUID();
         merchantAdapter.save(new Merchant(merchantId, "Merchant OptLock", "m_optlock@test.com", Instant.now()));
+
+        UUID processorId = UUID.randomUUID();
+        processorAdapter.save(new Processor(processorId, "Processor OptLock", Instant.now()));
 
         Payment initialPayment = new Payment(
                 paymentId,
@@ -90,12 +107,12 @@ class PaymentOptimisticLockingConcurrencyIntegrationTest {
         ConcurrentBarrierFindByIdDecorator barrierAdapter =
                 new ConcurrentBarrierFindByIdDecorator(realAdapter, 2);
 
-        ApprovePaymentUseCase approveUseCase = new ApprovePaymentUseCase(barrierAdapter);
+        ApprovePaymentUseCase approveUseCase = new ApprovePaymentUseCase(barrierAdapter, processorAdapter);
         CancelPaymentUseCase cancelUseCase = new CancelPaymentUseCase(barrierAdapter);
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
-            Future<Payment> approveFuture = executor.submit(() -> approveUseCase.execute(paymentId));
+            Future<Payment> approveFuture = executor.submit(() -> approveUseCase.execute(paymentId, processorId));
             Future<Payment> cancelFuture = executor.submit(() -> cancelUseCase.execute(paymentId, merchantId));
 
             List<Future<Payment>> futures = List.of(approveFuture, cancelFuture);

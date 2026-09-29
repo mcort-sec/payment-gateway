@@ -2,16 +2,26 @@ package com.miguelcortes.paymentgateway.entrypoint.rest;
 
 import com.jayway.jsonpath.JsonPath;
 import com.miguelcortes.paymentgateway.application.command.CreateApiCredentialCommand;
+import com.miguelcortes.paymentgateway.application.command.CreateProcessorCommand;
+import com.miguelcortes.paymentgateway.application.command.CreateProcessorCredentialCommand;
 import com.miguelcortes.paymentgateway.application.dto.GeneratedApiCredential;
+import com.miguelcortes.paymentgateway.application.dto.GeneratedProcessorCredential;
 import com.miguelcortes.paymentgateway.application.usecase.CreateApiCredentialUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.CreateProcessorCredentialUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.CreateProcessorUseCase;
 import com.miguelcortes.paymentgateway.domain.model.Currency;
 import com.miguelcortes.paymentgateway.domain.model.Merchant;
 import com.miguelcortes.paymentgateway.domain.model.PaymentStatus;
+import com.miguelcortes.paymentgateway.domain.model.Processor;
+import com.miguelcortes.paymentgateway.domain.model.ProcessorStatus;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.adapter.MerchantPersistenceAdapter;
+import com.miguelcortes.paymentgateway.infrastructure.persistence.adapter.ProcessorPersistenceAdapter;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.entity.PaymentEntity;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataApiCredentialRepository;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataMerchantRepository;
 import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataPaymentRepository;
+import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataProcessorCredentialRepository;
+import com.miguelcortes.paymentgateway.infrastructure.persistence.repository.SpringDataProcessorRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -61,15 +71,32 @@ class PaymentCreationEndToEndTest {
     private SpringDataApiCredentialRepository apiCredentialRepository;
 
     @Autowired
+    private SpringDataProcessorRepository processorRepository;
+
+    @Autowired
+    private SpringDataProcessorCredentialRepository processorCredentialRepository;
+
+    @Autowired
     private MerchantPersistenceAdapter merchantAdapter;
 
     @Autowired
+    private ProcessorPersistenceAdapter processorAdapter;
+
+    @Autowired
     private CreateApiCredentialUseCase createApiCredentialUseCase;
+
+    @Autowired
+    private CreateProcessorUseCase createProcessorUseCase;
+
+    @Autowired
+    private CreateProcessorCredentialUseCase createProcessorCredentialUseCase;
 
     @BeforeEach
     void setUp() {
         paymentRepository.deleteAll();
         apiCredentialRepository.deleteAll();
+        processorCredentialRepository.deleteAll();
+        processorRepository.deleteAll();
         merchantRepository.deleteAll();
     }
 
@@ -77,6 +104,11 @@ class PaymentCreationEndToEndTest {
         UUID merchantId = UUID.randomUUID();
         merchantAdapter.save(new Merchant(merchantId, name, email, Instant.now()));
         return createApiCredentialUseCase.execute(new CreateApiCredentialCommand(merchantId));
+    }
+
+    private GeneratedProcessorCredential createProcessorWithApiKey(String name) {
+        Processor processor = createProcessorUseCase.execute(new CreateProcessorCommand(name));
+        return createProcessorCredentialUseCase.execute(new CreateProcessorCredentialCommand(processor.getId()));
     }
 
     @Test
@@ -115,11 +147,9 @@ class PaymentCreationEndToEndTest {
                 JsonPath.read(result.getResponse().getContentAsString(), "$.id")
         );
 
-        // Header Location verification
         String locationHeader = result.getResponse().getHeader("Location");
         assertThat(locationHeader).endsWith("/payments/" + generatedId);
 
-        // Verification in PostgreSQL
         assertThat(paymentRepository.count()).isEqualTo(1L);
 
         Optional<PaymentEntity> persistedEntity = paymentRepository.findById(generatedId);
@@ -152,7 +182,6 @@ class PaymentCreationEndToEndTest {
                 }
                 """.formatted(amount, currency);
 
-        // First request
         MvcResult firstResult = mockMvc.perform(post("/payments")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey())
                         .header("Idempotency-Key", idempotencyKey)
@@ -165,7 +194,6 @@ class PaymentCreationEndToEndTest {
         UUID firstId = UUID.fromString(JsonPath.read(firstJson, "$.id"));
         String firstCreatedAt = JsonPath.read(firstJson, "$.createdAt");
 
-        // Second identical request (Replay)
         MvcResult secondResult = mockMvc.perform(post("/payments")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey())
                         .header("Idempotency-Key", idempotencyKey)
@@ -181,7 +209,6 @@ class PaymentCreationEndToEndTest {
         assertThat(secondId).isEqualTo(firstId);
         assertThat(secondCreatedAt).isEqualTo(firstCreatedAt);
 
-        // Database has exactly 1 row
         assertThat(paymentRepository.count()).isEqualTo(1L);
         Optional<PaymentEntity> persisted = paymentRepository.findByMerchantIdAndIdempotencyKey(merchantId, idempotencyKey);
         assertThat(persisted).isPresent();
@@ -209,7 +236,6 @@ class PaymentCreationEndToEndTest {
                 }
                 """;
 
-        // 1. First request succeeds
         mockMvc.perform(post("/payments")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey())
                         .header("Idempotency-Key", idempotencyKey)
@@ -219,7 +245,6 @@ class PaymentCreationEndToEndTest {
 
         assertThat(paymentRepository.count()).isEqualTo(1L);
 
-        // 2. Conflicting request fails with 409 Conflict
         mockMvc.perform(post("/payments")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey())
                         .header("Idempotency-Key", idempotencyKey)
@@ -232,7 +257,6 @@ class PaymentCreationEndToEndTest {
                 .andExpect(jsonPath("$.path").value("/payments"))
                 .andExpect(jsonPath("$.timestamp").value(notNullValue()));
 
-        // 3. PostgreSQL verification
         assertThat(paymentRepository.count()).isEqualTo(1L);
         PaymentEntity entity = paymentRepository.findAll().get(0);
         assertThat(entity.getAmount()).isEqualTo(50000L);
@@ -255,7 +279,6 @@ class PaymentCreationEndToEndTest {
                 }
                 """.formatted(amount, currency);
 
-        // 1. POST /payments
         MvcResult createResult = mockMvc.perform(post("/payments")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey())
                         .header("Idempotency-Key", idempotencyKey)
@@ -268,7 +291,6 @@ class PaymentCreationEndToEndTest {
         UUID createdId = UUID.fromString(JsonPath.read(createJson, "$.id"));
         String createdAt = JsonPath.read(createJson, "$.createdAt");
 
-        // 2. GET /payments/{id}
         mockMvc.perform(get("/payments/{id}", createdId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey()))
                 .andExpect(status().isOk())
@@ -279,7 +301,6 @@ class PaymentCreationEndToEndTest {
                 .andExpect(jsonPath("$.status").value(PaymentStatus.PENDING.name()))
                 .andExpect(jsonPath("$.createdAt").value(createdAt));
 
-        // 3. Verify in PostgreSQL
         Optional<PaymentEntity> entity = paymentRepository.findById(createdId);
         assertThat(entity).isPresent();
         assertThat(entity.get().getId()).isEqualTo(createdId);
@@ -310,7 +331,6 @@ class PaymentCreationEndToEndTest {
 
         UUID paymentId = UUID.fromString(JsonPath.read(createResult.getResponse().getContentAsString(), "$.id"));
 
-        // Merchant B attempts to GET Merchant A's payment -> 404 Not Found
         mockMvc.perform(get("/payments/{id}", paymentId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + credB.plaintextApiKey()))
                 .andExpect(status().isNotFound())
@@ -333,7 +353,6 @@ class PaymentCreationEndToEndTest {
                 }
                 """;
 
-        // 1. Merchant A creates payment
         MvcResult createResult = mockMvc.perform(post("/payments")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + credA.plaintextApiKey())
                         .header("Idempotency-Key", "cancel-e2e-1")
@@ -344,17 +363,14 @@ class PaymentCreationEndToEndTest {
 
         UUID paymentId = UUID.fromString(JsonPath.read(createResult.getResponse().getContentAsString(), "$.id"));
 
-        // 2. Merchant B attempts to cancel Merchant A's payment -> 404 Not Found
         mockMvc.perform(post("/payments/{id}/cancel", paymentId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + credB.plaintextApiKey()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.message").value("Payment not found with id: " + paymentId));
 
-        // In PostgreSQL status remains PENDING
         assertThat(paymentRepository.findById(paymentId).get().getStatus()).isEqualTo(PaymentStatus.PENDING);
 
-        // 3. Merchant A cancels their own payment -> 200 OK CANCELLED
         mockMvc.perform(post("/payments/{id}/cancel", paymentId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + credA.plaintextApiKey()))
                 .andExpect(status().isOk())
@@ -363,7 +379,6 @@ class PaymentCreationEndToEndTest {
 
         assertThat(paymentRepository.findById(paymentId).get().getStatus()).isEqualTo(PaymentStatus.CANCELLED);
 
-        // 4. Repeated cancel -> 409 Conflict
         mockMvc.perform(post("/payments/{id}/cancel", paymentId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + credA.plaintextApiKey()))
                 .andExpect(status().isConflict())
@@ -371,30 +386,134 @@ class PaymentCreationEndToEndTest {
     }
 
     @Test
-    @DisplayName("7. DenyAll endpoints: POST /approve and /decline return 403 Forbidden for authenticated merchants")
-    void shouldReturn403ForbiddenWhenCallingApproveOrDecline() throws Exception {
-        GeneratedApiCredential cred = createMerchantWithApiKey("Merchant Auth", "merchAuth@test.com");
-        UUID dummyId = UUID.randomUUID();
+    @DisplayName("7. Role separation: Merchant cannot call /approve or /decline (403), Processor approves/declines successfully (200)")
+    void shouldEnforceRoleSeparationForApproveAndDecline() throws Exception {
+        GeneratedApiCredential merchantCred = createMerchantWithApiKey("Merchant Role", "merchRole@test.com");
+        GeneratedProcessorCredential procCred = createProcessorWithApiKey("Processor Primary");
 
-        mockMvc.perform(post("/payments/{id}/approve", dummyId)
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey()))
+        // 1. Merchant creates payment
+        String requestJson = """
+                {
+                    "amount": 100000,
+                    "currency": "COP"
+                }
+                """;
+
+        MvcResult createResult = mockMvc.perform(post("/payments")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + merchantCred.plaintextApiKey())
+                        .header("Idempotency-Key", "role-pay-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID paymentId = UUID.fromString(JsonPath.read(createResult.getResponse().getContentAsString(), "$.id"));
+
+        // 2. Merchant attempts /approve -> 403 Forbidden
+        mockMvc.perform(post("/payments/{id}/approve", paymentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + merchantCred.plaintextApiKey()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.status").value(403))
                 .andExpect(jsonPath("$.error").value("Forbidden"))
-                .andExpect(jsonPath("$.message").value("Access denied"))
-                .andExpect(jsonPath("$.path").value("/payments/" + dummyId + "/approve"));
+                .andExpect(jsonPath("$.message").value("Access denied"));
 
-        mockMvc.perform(post("/payments/{id}/decline", dummyId)
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cred.plaintextApiKey()))
+        // 3. Merchant attempts /decline -> 403 Forbidden
+        mockMvc.perform(post("/payments/{id}/decline", paymentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + merchantCred.plaintextApiKey()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.status").value(403))
                 .andExpect(jsonPath("$.error").value("Forbidden"))
-                .andExpect(jsonPath("$.message").value("Access denied"))
-                .andExpect(jsonPath("$.path").value("/payments/" + dummyId + "/decline"));
+                .andExpect(jsonPath("$.message").value("Access denied"));
+
+        // 4. Processor attempts to create/get/cancel payment -> 403 Forbidden
+        mockMvc.perform(post("/payments")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + procCred.plaintextApiKey())
+                        .header("Idempotency-Key", "proc-pay-attempt")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+
+        mockMvc.perform(get("/payments/{id}", paymentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + procCred.plaintextApiKey()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+
+        mockMvc.perform(post("/payments/{id}/cancel", paymentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + procCred.plaintextApiKey()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+
+        // 5. Processor approves payment -> 200 OK APPROVED
+        mockMvc.perform(post("/payments/{id}/approve", paymentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + procCred.plaintextApiKey()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(paymentId.toString()))
+                .andExpect(jsonPath("$.status").value("APPROVED"));
+
+        // Verify in PostgreSQL
+        assertThat(paymentRepository.findById(paymentId).get().getStatus()).isEqualTo(PaymentStatus.APPROVED);
     }
 
     @Test
-    @DisplayName("8. Unknown JSON property: POST /payments containing unknown property 'merchantId' returns 400 Bad Request")
+    @DisplayName("8. Processor decline and suspension flow")
+    void shouldHandleProcessorDeclineAndSuspendedState() throws Exception {
+        GeneratedApiCredential merchantCred = createMerchantWithApiKey("Merchant Proc 2", "merchProc2@test.com");
+        GeneratedProcessorCredential procCred = createProcessorWithApiKey("Processor Second");
+
+        // 1. Create payment
+        String requestJson = """
+                {
+                    "amount": 40000,
+                    "currency": "COP"
+                }
+                """;
+
+        MvcResult createResult = mockMvc.perform(post("/payments")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + merchantCred.plaintextApiKey())
+                        .header("Idempotency-Key", "proc-decline-pay-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID paymentId = UUID.fromString(JsonPath.read(createResult.getResponse().getContentAsString(), "$.id"));
+
+        // 2. Decline payment -> 200 OK DECLINED
+        mockMvc.perform(post("/payments/{id}/decline", paymentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + procCred.plaintextApiKey()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(paymentId.toString()))
+                .andExpect(jsonPath("$.status").value("DECLINED"));
+
+        assertThat(paymentRepository.findById(paymentId).get().getStatus()).isEqualTo(PaymentStatus.DECLINED);
+
+        // 3. Create another payment to test suspended processor
+        MvcResult createResult2 = mockMvc.perform(post("/payments")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + merchantCred.plaintextApiKey())
+                        .header("Idempotency-Key", "proc-suspend-pay-2")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        UUID paymentId2 = UUID.fromString(JsonPath.read(createResult2.getResponse().getContentAsString(), "$.id"));
+
+        // Suspend processor
+        Processor processor = processorAdapter.findById(procCred.credential().getProcessorId()).get();
+        processor.suspend();
+        processorAdapter.save(processor);
+
+        // Processor key is valid cryptographically, but processor is SUSPENDED -> 403 Forbidden
+        mockMvc.perform(post("/payments/{id}/approve", paymentId2)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + procCred.plaintextApiKey()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.message").value("Processor is suspended: " + procCred.credential().getProcessorId()));
+    }
+
+    @Test
+    @DisplayName("9. Unknown JSON property: POST /payments containing unknown property 'merchantId' returns 400 Bad Request")
     void shouldReturn400BadRequestWhenUnknownPropertyMerchantIdIsPassed() throws Exception {
         GeneratedApiCredential cred = createMerchantWithApiKey("Merchant Unknown", "unknown@test.com");
 
@@ -421,7 +540,7 @@ class PaymentCreationEndToEndTest {
     }
 
     @Test
-    @DisplayName("9. Authentication failures: Missing, malformed, non-existent, or revoked API key returns 401 Unauthorized")
+    @DisplayName("10. Authentication failures: Missing, malformed, non-existent, or revoked API key returns 401 Unauthorized")
     void shouldReturn401UnauthorizedWhenApiKeyIsMissingOrInvalid() throws Exception {
         GeneratedApiCredential cred = createMerchantWithApiKey("Merchant Revoke", "revoke@test.com");
 
@@ -476,5 +595,26 @@ class PaymentCreationEndToEndTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.status").value(401))
                 .andExpect(jsonPath("$.message").value("Invalid or missing API key"));
+    }
+
+    @Test
+    @DisplayName("11. Processor authentication failure: Valid syntax and existing prefix but mismatched secret returns 401 Unauthorized")
+    void shouldReturn401UnauthorizedWhenProcessorApiKeyHasSecretMismatch() throws Exception {
+        GeneratedProcessorCredential procCred = createProcessorWithApiKey("Processor Hash Mismatch");
+        String plaintext = procCred.plaintextApiKey();
+
+        char originalLast = plaintext.charAt(plaintext.length() - 1);
+        char replacement = originalLast == 'A' ? 'B' : 'A';
+        String tamperedProcKey = plaintext.substring(0, plaintext.length() - 1) + replacement;
+
+        UUID randomPaymentId = UUID.randomUUID();
+
+        mockMvc.perform(post("/payments/{id}/approve", randomPaymentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + tamperedProcKey))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message").value("Invalid or missing API key"))
+                .andExpect(jsonPath("$.path").value("/payments/" + randomPaymentId + "/approve"));
     }
 }
