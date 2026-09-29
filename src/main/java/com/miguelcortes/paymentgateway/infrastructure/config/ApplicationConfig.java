@@ -23,6 +23,7 @@ import com.miguelcortes.paymentgateway.application.usecase.CreateRefundUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.DeclinePaymentUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.DeclineRefundUseCase;
 import com.miguelcortes.paymentgateway.application.usecase.GetPaymentUseCase;
+import com.miguelcortes.paymentgateway.application.usecase.GetRefundUseCase;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -160,5 +161,10 @@ public class ApplicationConfig {
             ProcessorRepositoryPort processorRepositoryPort
     ) {
         return new DeclineRefundUseCase(refundRepositoryPort, processorRepositoryPort);
+    }
+
+    @Bean
+    public GetRefundUseCase getRefundUseCase(RefundRepositoryPort refundRepositoryPort) {
+        return new GetRefundUseCase(refundRepositoryPort);
     }
 }

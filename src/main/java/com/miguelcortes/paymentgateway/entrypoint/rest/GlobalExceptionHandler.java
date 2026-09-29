@@ -7,10 +7,15 @@ import com.miguelcortes.paymentgateway.application.exception.PaymentConcurrentMo
 import com.miguelcortes.paymentgateway.application.exception.PaymentNotFoundException;
 import com.miguelcortes.paymentgateway.application.exception.ProcessorNotFoundException;
 import com.miguelcortes.paymentgateway.application.exception.ProcessorSuspendedException;
+import com.miguelcortes.paymentgateway.application.exception.RefundAmountExceedsAvailableException;
+import com.miguelcortes.paymentgateway.application.exception.RefundConcurrentModificationException;
+import com.miguelcortes.paymentgateway.application.exception.RefundNotFoundException;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentException;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidPaymentStateException;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidProcessorCredentialException;
 import com.miguelcortes.paymentgateway.domain.exception.InvalidProcessorException;
+import com.miguelcortes.paymentgateway.domain.exception.InvalidRefundException;
+import com.miguelcortes.paymentgateway.domain.exception.InvalidRefundStateException;
 import com.miguelcortes.paymentgateway.entrypoint.rest.dto.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -171,6 +176,76 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidPaymentException.class)
     public ResponseEntity<ErrorResponse> handleInvalidPayment(
             InvalidPaymentException ex,
+            HttpServletRequest request
+    ) {
+        ErrorResponse error = ErrorResponse.of(
+                HttpStatus.BAD_REQUEST.value(),
+                HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
+    @ExceptionHandler(RefundNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleRefundNotFound(
+            RefundNotFoundException ex,
+            HttpServletRequest request
+    ) {
+        ErrorResponse error = ErrorResponse.of(
+                HttpStatus.NOT_FOUND.value(),
+                HttpStatus.NOT_FOUND.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+    }
+
+    @ExceptionHandler(InvalidRefundStateException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidRefundState(
+            InvalidRefundStateException ex,
+            HttpServletRequest request
+    ) {
+        ErrorResponse error = ErrorResponse.of(
+                HttpStatus.CONFLICT.value(),
+                HttpStatus.CONFLICT.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
+    }
+
+    @ExceptionHandler(RefundAmountExceedsAvailableException.class)
+    public ResponseEntity<ErrorResponse> handleRefundAmountExceedsAvailable(
+            RefundAmountExceedsAvailableException ex,
+            HttpServletRequest request
+    ) {
+        ErrorResponse error = ErrorResponse.of(
+                HttpStatus.CONFLICT.value(),
+                HttpStatus.CONFLICT.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
+    }
+
+    @ExceptionHandler(RefundConcurrentModificationException.class)
+    public ResponseEntity<ErrorResponse> handleRefundConcurrentModification(
+            RefundConcurrentModificationException ex,
+            HttpServletRequest request
+    ) {
+        ErrorResponse error = ErrorResponse.of(
+                HttpStatus.CONFLICT.value(),
+                HttpStatus.CONFLICT.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
+    }
+
+    @ExceptionHandler(InvalidRefundException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidRefund(
+            InvalidRefundException ex,
             HttpServletRequest request
     ) {
         ErrorResponse error = ErrorResponse.of(
