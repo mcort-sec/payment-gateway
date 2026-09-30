@@ -8,6 +8,7 @@ The gateway provides payment processing and refund workflows with multi-tenant i
 
 ## Table of Contents
 
+- [5-Minute Demo](#5-minute-demo)
 - [Architecture & Design Principles](#architecture--design-principles)
 - [Technology Stack](#technology-stack)
 - [Prerequisites & Local Environment Setup](#prerequisites--local-environment-setup)
@@ -25,6 +26,163 @@ The gateway provides payment processing and refund workflows with multi-tenant i
 - [Testing & Quality Assurance](#testing--quality-assurance)
 - [Key Architectural Decisions](#key-architectural-decisions)
 - [Operational & Security Notes](#operational--security-notes)
+
+---
+
+## 5-Minute Demo
+
+This demo mode is designed for portfolio evaluation and rapid local testing. It boots the Payment Gateway in a self-contained local environment, automatically initializing test actors and deterministic credentials so you can execute and explore the API immediately.
+
+> [!NOTE]
+> The demo profile automatically provisions four distinct testing identities (Active Merchant, Suspended Merchant, Active Processor, Suspended Processor) and their credentials via an idempotent startup bootstrap. It does **not** pre-populate payments or refunds—allowing you to interactively execute the entire transaction lifecycle from Postman.
+
+> [!WARNING]
+> **DEMO PROFILE ONLY**: The credentials under the `demo` profile are intentionally deterministic and public for portfolio demonstration. Never use them outside a disposable local development environment. The default application profile does not load demo data.
+
+### What This Demo Demonstrates
+- **Clean Architecture & Hexagonal Isolation**: Pure Java domain aggregates and interactors completely decoupled from Spring and JPA.
+- **Role-Based API Key Authentication**: Cryptographic SHA-256 hashed keys with indexed prefix lookups.
+- **Multi-Tenant Security**: Strict merchant tenant isolation and opaque cross-tenant probing defense.
+- **Idempotency Contracts**: Safe replays on identical requests and 409 Conflict detection on payload mutations.
+- **Transaction Lifecycle & State Machines**: Deterministic payment and refund status progressions (`PENDING` $\to$ `APPROVED` / `DECLINED` / `CANCELLED`).
+- **Concurrency & Capacity Controls**: Optimistic locking (`@Version`) for entity updates and pessimistic row locking (`PESSIMISTIC_WRITE`) for real-time refund balance reservation.
+- **Suspension Policies & Error Contracts**: Immediate enforcement of merchant and processor suspensions with RFC-compliant, uniform JSON error structures.
+
+---
+
+### Prerequisites
+- **Java 17+** (JDK)
+- **Docker & Docker Compose**
+- **Git**
+- **Postman** (Desktop app or web client)
+
+*(Maven does not need to be installed separately; the project includes the `./mvnw` wrapper).*
+
+---
+
+### Step-by-Step Quickstart
+
+#### 1. Clone the Repository
+```bash
+git clone <your-repository-url>
+cd payment-gateway
+```
+
+#### 2. Prepare Environment Variables
+Copy `.env.example` to create your local `.env`:
+```bash
+cp .env.example .env
+```
+
+Set the database environment variables in your terminal session (Spring Boot requires these variables in its environment):
+
+- **Linux / macOS / Git Bash**:
+  ```bash
+  set -a && source .env && set +a
+  ```
+- **Windows PowerShell**:
+  ```powershell
+  $env:DB_HOST="localhost"; $env:DB_PORT="5432"; $env:DB_NAME="payment_gateway_db"; $env:DB_USERNAME="payment_gateway_user"; $env:DB_PASSWORD="payment_gateway_secret"
+  ```
+
+#### 3. Start PostgreSQL Container
+Launch the PostgreSQL 15 database container using Docker Compose:
+```bash
+docker compose up -d
+```
+*(You can verify the database is healthy with `docker compose ps`).*
+
+#### 4. Run the Application in Demo Profile
+Start the backend with the `demo` profile active:
+
+- **Linux / macOS**:
+  ```bash
+  ./mvnw spring-boot:run -Dspring-boot.run.profiles=demo
+  ```
+- **Windows**:
+  ```cmd
+  .\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=demo
+  ```
+
+The application starts on `http://localhost:8080`. On boot, Flyway runs database migrations and the demo bootstrap prints the active credentials banner to console:
+
+```
+================================================================================
+PAYMENT GATEWAY — DEMO CREDENTIALS LOADED
+================================================================================
+[PROFILE: demo] Use these credentials to test the API locally via Postman / cURL.
+
+1. ACTIVE MERCHANT:
+   Merchant ID : 00000000-0000-0000-0000-000000000001
+   API Key     : pg_test_demoActvMerc_ActiveMerchantDemoSecretKeyForTestingV12345
+   Permissions : Create / Get / List Payments, Cancel Payments, Create / Get / List Refunds
+
+2. SUSPENDED MERCHANT:
+   Merchant ID : 00000000-0000-0000-0000-000000000002
+   API Key     : pg_test_demoSuspMerc_SuspendedMerchantDemoSecretKeyTestingV12345
+   Permissions : Get / List resources, Cancel PENDING Payments, Create Refunds; Payment Creation returns 403 Forbidden
+
+3. ACTIVE PROCESSOR:
+   Processor ID: 00000000-0000-0000-0000-000000000003
+   API Key     : pg_proc_test_demoActvProc_ActiveProcessorDemoSecretKeyForTestingV1234
+   Permissions : Approve / Decline Payments and Refunds
+
+4. SUSPENDED PROCESSOR:
+   Processor ID: 00000000-0000-0000-0000-000000000004
+   API Key     : pg_proc_test_demoSuspProc_SuspendedProcessorDemoSecretKeyTestingV1234
+   Permissions : Callback operations return 403 Forbidden
+================================================================================
+DEMO PROFILE ONLY — NEVER USE THESE CREDENTIALS IN PRODUCTION
+================================================================================
+```
+
+#### 5. Import Postman Collection & Environment
+1. Open **Postman** and click **Import** (top left).
+2. Select the two JSON files located in the `postman/` directory:
+   - `postman/payment-gateway.postman_collection.json`
+   - `postman/payment-gateway-demo.postman_environment.json`
+3. In the environment selector dropdown (top right), select **`Payment Gateway Demo Environment`**.
+
+#### 6. Run the Happy Path Flow
+In Postman, open folder **`01 - Happy Path`** and execute the requests in sequence:
+1. `01 Create Payment — Active Merchant`: Submits a `$50.00` payment. Returns `201 Created` (`PENDING`) and stores `paymentId`.
+2. `02 Get Payment — Active Merchant`: Fetches the created payment and confirms `PENDING` state.
+3. `03 List Payments — Active Merchant`: Queries paginated history and validates the payment appears in results.
+4. `04 Approve Payment — Active Processor`: Processor callback approving the payment (`200 OK`, `APPROVED`).
+5. `05 Create Refund — Active Merchant`: Submits a partial refund of `$20.00` against the approved payment. Returns `201 Created` (`PENDING`) and stores `refundId`.
+6. `06 Get Refund — Active Merchant`: Verifies the refund details and `PENDING` status.
+7. `07 List Refunds — Active Merchant`: Confirms the refund appears in the merchant's refund history.
+8. `08 Approve Refund — Active Processor`: Processor callback approving the refund (`200 OK`, `APPROVED`).
+
+---
+
+### Exploring Additional Scenarios
+
+The Postman collection contains 24 structured requests organized across 5 folders:
+
+- **`02 - Idempotency`**: Demonstrates that replaying requests with the same `Idempotency-Key` and payload returns the original entity (`201 Created`), while changing payload parameters under the same key triggers `409 Conflict`.
+- **`03 - Security`**: Verifies `401 Unauthorized` for missing or malformed tokens, and `403 Forbidden` when credentials attempt cross-role operations (e.g. a Merchant calling processor callbacks).
+- **`04 - Suspended Actors`**: Demonstrates that Suspended Merchants cannot create new payments (`403 Forbidden`) but retain access to transaction history (`200 OK`), and Suspended Processors cannot process callbacks (`403 Forbidden`).
+- **`05 - Pagination / Validation`**: Demonstrates robust parameter validation on pagination bounds (negative page, zero size, sizes > 100, malformed types $\to$ `400 Bad Request`).
+
+---
+
+### Resetting Demo Data
+To wipe local PostgreSQL data and start with a fresh database:
+```bash
+docker compose down -v
+docker compose up -d
+```
+*(Rebooting with `./mvnw spring-boot:run -Dspring-boot.run.profiles=demo` will reapply migrations and re-seed the demo actors cleanly).*
+
+---
+
+### Running Automated Tests
+Execute the full test suite (unit, concurrency, integration, and Testcontainers end-to-end tests):
+```bash
+./mvnw test
+```
+The test suite currently contains **436 tests** (0 failures, 0 errors, 0 skipped).
 
 ---
 
@@ -573,7 +731,7 @@ Execute the entire test suite using the Maven wrapper:
 - **Security Tests**: Validate token parsing, constant-time hashing, role authorization, and suspended entity filters.
 - **MockMvc End-to-End Tests** (`*EndToEndTest.java`): Full HTTP-to-Database integration tests validating status codes, `ErrorResponse` payloads, headers, and transactional rollbacks against a real PostgreSQL container.
 
-**Current Test Baseline**: 387 tests, 0 failures, 0 errors, 0 skipped.
+**Current Test Baseline**: 436 tests, 0 failures, 0 errors, 0 skipped.
 
 ---
 
